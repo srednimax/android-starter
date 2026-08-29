@@ -163,9 +163,10 @@ R8 mapping**, keep both as a build artifact for 90 days, delete the key.
 The mapping matters from 1.9.0: R8 is on, so without it every Play crash report is
 obfuscated frames.
 
-### The five secrets it needs
+### The five secrets this workflow needs
 
-Four for the upload key, one for Play. Set them under *Settings → Secrets and variables →
+Four for the upload key, one for Play. `RELEASE_PLEASE_TOKEN` is a sixth, needed
+earlier and by a different workflow — see *Setting up a new repository*. Set them under *Settings → Secrets and variables →
 Actions*:
 
 | Secret | What it is |
@@ -283,6 +284,28 @@ else's mileage. Ruby is confined to this workflow; the internal-track one never 
 
 ⚠️ **Changelog files are named by `versionCode`, not semver** — `409.txt`, not `1.9.0.txt`. supply
 keys notes to the build, and a name Play cannot match is ignored in silence rather than rejected.
+
+## Setting up a new repository (once)
+
+Everything here is repo-level: done by hand after `gh repo create --template`, and none of it
+lives in the code. That is what makes it easy to miss — the build goes green long before any of
+it is done, and the first thing to fail is a release PR that simply never appears.
+
+1. **`RELEASE_PLEASE_TOKEN`** — a fine-grained PAT with *contents: write* and *pull-requests:
+   write* on this repo, under *Settings → Secrets and variables → Actions*. Without it
+   `release-please.yml` fails in about seven seconds with `Input required and not supplied:
+   token`, and no release PR is ever opened. Do this one first; it is also the one most easily
+   mistaken for a broken template.
+2. **Allow rebase merging only** — *Settings → General → Pull Requests*: untick merge commits
+   and squash. The changelog depends on it, for the reason in *Merge pull requests with rebase*.
+3. **The `main` ruleset** — *Settings → Rules → New ruleset* targeting `main`: require a pull
+   request, and require the `CI` status check. Leave **bypass actors empty**. Note how this
+   interacts with step 1: a release PR opened by `GITHUB_TOKEN` gets zero CI jobs, and this rule
+   then blocks its merge permanently.
+4. **GitHub Pages** — *Settings → Pages*, deploy from branch `main`, folder `/docs`. Play
+   requires a *hosted* privacy-policy URL and an offline app has no server of its own.
+5. **The five Play secrets** — the table under *Reaching Play automatically*. Not needed until
+   the first upload, so these can wait; the four above cannot.
 
 ## Gotchas
 
