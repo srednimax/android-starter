@@ -287,25 +287,57 @@ keys notes to the build, and a name Play cannot match is ignored in silence rath
 
 ## Setting up a new repository (once)
 
-Everything here is repo-level: done by hand after `gh repo create --template`, and none of it
-lives in the code. That is what makes it easy to miss — the build goes green long before any of
-it is done, and the first thing to fail is a release PR that simply never appears.
+**None of this is inherited.** GitHub's template mechanism copies files and nothing else: no
+rulesets, no branch protection, no secrets, no Pages setting, no merge-strategy preference. A repo
+created from the template starts with `main` wide open and every item below undone — and the build
+stays green throughout, so nothing tells you. The first symptom is a release PR that never appears,
+which reads like a broken template rather than an unconfigured repository.
 
-1. **`RELEASE_PLEASE_TOKEN`** — a fine-grained PAT with *contents: write* and *pull-requests:
-   write* on this repo, under *Settings → Secrets and variables → Actions*. Without it
-   `release-please.yml` fails in about seven seconds with `Input required and not supplied:
-   token`, and no release PR is ever opened. Do this one first; it is also the one most easily
-   mistaken for a broken template.
-2. **Allow rebase merging only** — *Settings → General → Pull Requests*: untick merge commits
-   and squash. The changelog depends on it, for the reason in *Merge pull requests with rebase*.
-3. **The `main` ruleset** — *Settings → Rules → New ruleset* targeting `main`: require a pull
-   request, and require the `CI` status check. Leave **bypass actors empty**. Note how this
-   interacts with step 1: a release PR opened by `GITHUB_TOKEN` gets zero CI jobs, and this rule
-   then blocks its merge permanently.
-4. **GitHub Pages** — *Settings → Pages*, deploy from branch `main`, folder `/docs`. Play
-   requires a *hosted* privacy-policy URL and an offline app has no server of its own.
-5. **The five Play secrets** — the table under *Reaching Play automatically*. Not needed until
-   the first upload, so these can wait; the four above cannot.
+Most of it is one command:
+
+```bash
+python3 scripts/repo-setup.py --dry-run   # what it would change, and what is already right
+python3 scripts/repo-setup.py             # do it
+```
+
+It creates the `main: require CI` ruleset with the right check names, sets rebase-only merging,
+enables Pages from `docs/`, and reports which secrets are still missing. It is idempotent — run it
+again after any manual change and it reports what is already correct rather than fighting you. It
+verifies the required check names against `ci.yml` first, because a required check that CI never
+publishes leaves every PR stuck at *"Expected — waiting for status to be reported"* with no way out
+but deleting the ruleset.
+
+**The one step it cannot do is the token.** GitHub has no API for minting a personal access token,
+so do this by hand, first:
+
+1. https://github.com/settings/personal-access-tokens/new — fine-grained, *Only select
+   repositories* → this one, and exactly two permissions: **Contents: read and write**,
+   **Pull requests: read and write**. (`Metadata: read-only` is added automatically; leave it.)
+   The token's *name* is an account-unique label of your choosing and has nothing to do with the
+   secret name — reuse across repos is impossible, so name it for the repo it serves.
+2. `gh secret set RELEASE_PLEASE_TOKEN --repo <owner>/<repo>` and paste the value.
+
+Without it `release-please.yml` fails in about seven seconds with `Input required and not supplied:
+token`, and no release PR is ever opened.
+
+What the script sets, and why each one matters, is in the sections above: **rebase-only merging**
+(*Merge pull requests with rebase*), **the `main` ruleset** — no bypass actors, requiring both CI
+contexts, and note how it interacts with the token, since a release PR opened by `GITHUB_TOKEN`
+gets zero CI jobs and this rule then blocks its merge permanently — and **Pages**, because Play
+demands a *hosted* privacy-policy URL and an app with no backend has no server of its own.
+
+The **five Play secrets** (table above) are the exception: wanted at the first upload, not before.
+
+### The template repository does not version itself
+
+`release-please.yml` carries `if: github.event.repository.is_template != true`. The template ships
+no app, so a release PR on it bumps a `versionName` nothing consumes and then fails the notes gate —
+correctly, since that gate demands Play release notes for a version that will never reach Play.
+
+**A repo generated from the template is not itself a template**, so the condition is false there and
+release-please runs in full: release PR, `CHANGELOG.md`, the `versionName` bump, the tag, the GitHub
+Release and the Play upload. Nothing is disabled downstream, and there is nothing for `bootstrap.py`
+to rewrite.
 
 ## Gotchas
 
