@@ -1,0 +1,4 @@
+# supply reads the package name from here so it is stated once rather than on every invocation.
+# The service-account key arrives as a file path on the command line — it is a secret and has no
+# business in a tracked file.
+package_name("com.example.starter")

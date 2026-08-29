@@ -1,0 +1,9 @@
+This template is provided as-is, for you to build on. Use it for anything.
+
+The apps you build from it are yours; nothing here asks for attribution.
+
+Note that the *built app* ships third-party open-source code (androidx, Kotlin,
+Coroutines, Coil, Room and their transitive dependencies). Those obligations are
+real and travel with your binary — which is what `licensee`, the generated
+licences screen and `app/src/main/assets/licences/` exist to satisfy. Do not
+remove them.

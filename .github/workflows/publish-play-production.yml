@@ -1,0 +1,176 @@
+name: Publish to Play (production)
+
+# Manual only, and gated twice more on top of that. This is the one workflow that can put a build
+# in front of every owner, so nothing about it is automatic: you trigger it, the `production`
+# environment holds it until you approve, and the rollout reaches a fraction of installs first.
+#
+# The internal-track workflow (publish-play.yml) stays the automatic one, because a bad build there
+# is visible only to you. Nothing about that reasoning transfers here.
+#
+# ⚠️ This workflow PROMOTES; it does not build. The artifact it moves to production is the exact one
+# publish-play.yml already put on the internal track — same bytes, same signature, the copy you
+# actually tested. Rebuilding here was the old shape and it could never have worked: versionCode is
+# the commit count, so a rebuild of a released tag reproduces a code Play has already accepted on
+# internal, and Play permanently refuses a *new upload* of a versionCode it has seen. (Two tracks
+# SHARING a versionCode is normal and is exactly what promotion produces — the refusal is about
+# uploading the same code twice, not about where it ends up.) Promotion sidesteps that entirely and
+# removes the upload key from this workflow: nothing is signed here, so no keystore is materialised.
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Destination track — production reaches real owners'
+        type: choice
+        default: production
+        options:
+          - production
+          - beta
+          - alpha
+      from_track:
+        description: 'Source track holding the build to promote — internal is where every release lands'
+        type: choice
+        default: internal
+        options:
+          - internal
+          - alpha
+          - beta
+      rollout:
+        # A choice, not free text: supply wants a FRACTION, so typing 10 to mean "10%" would ask
+        # Play for 1000%. The options are the only values anyone actually wants.
+        description: 'Staged rollout — 0.1 means 10% of owners. Widen later from the Console.'
+        type: choice
+        default: '0.1'
+        options:
+          - '0.01'
+          - '0.05'
+          - '0.1'
+          - '0.2'
+          - '0.5'
+          - '1.0'
+      version_code:
+        # Blank is the normal case: the workflow asks Play which build is on the source track. Fill
+        # it in only to pin a specific older build.
+        description: 'versionCode to promote — blank asks Play what is on the source track'
+        type: string
+        required: false
+      update_listing:
+        description: 'Push descriptions + screenshots too — ONLY if store-listing.md changed'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Validate against Play, publish nothing — leave ON for a first run'
+        type: boolean
+        default: true
+
+concurrency:
+  group: publish-play-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Production release
+    runs-on: ubuntu-latest
+    # The approval gate. Add yourself as the sole required reviewer on this environment in repo
+    # settings; the job then waits for a human click no matter who or what started the workflow.
+    # ⚠️ Without that reviewer configured the environment is a label and gates nothing.
+    environment: production
+    steps:
+      # A shallow checkout is fine here, unlike every other workflow: nothing is built and nothing
+      # is derived from history. The versionCode comes from Play, not from `git rev-list --count`.
+      - uses: actions/checkout@v7
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      # ⚠️ The commit count — which every other workflow uses for versionCode — is the WRONG answer
+      # here, and wrong in a way that looks right. It describes the checkout; a promotion is about a
+      # build that was uploaded earlier. The two agree only while `main` still points at the release
+      # tag, and stop agreeing the moment anything else merges. So ask Play instead: the source track
+      # knows exactly which build it is holding, from any ref, with no dialog to get right.
+      - name: Resolve the versionCode being promoted
+        id: version
+        env:
+          JSON_KEY_DATA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          code='${{ inputs.version_code }}'
+          if [ -n "${code}" ]; then
+            echo "Pinned by the dialog: versionCode ${code}"
+          else
+            # Written to a file rather than passed inline: the key is a multi-line JSON blob and the
+            # shell is not a good place for it.
+            key="${RUNNER_TEMP}/play-key.json"
+            printf '%s' "${JSON_KEY_DATA}" > "${key}"
+            echo "Asking Play which build is on '${{ inputs.from_track }}'..."
+            out="$(bundle exec fastlane run google_play_track_version_codes \
+              package_name:'com.example.starter' \
+              track:'${{ inputs.from_track }}' \
+              json_key:"${key}" 2>&1)" || { echo "${out}"; rm -f "${key}"; exit 1; }
+            rm -f "${key}"
+            # `Result: [423]` — take the highest, so a track holding more than one release promotes
+            # the newest rather than whichever the API happened to list first.
+            code="$(printf '%s\n' "${out}" \
+              | sed -n 's/.*Result: *\[\([0-9,[:space:]]*\)\].*/\1/p' \
+              | tr ',' '\n' | tr -d '[:space:]' | grep -E '^[0-9]+$' | sort -n | tail -1)"
+            if [ -z "${code}" ]; then
+              echo "${out}"
+              echo "::error::No versionCode on track '${{ inputs.from_track }}'. Is its release live, or is it halted?"
+              exit 1
+            fi
+            echo "Play says '${{ inputs.from_track }}' holds versionCode ${code}"
+          fi
+          echo "code=${code}" >> "${GITHUB_OUTPUT}"
+          echo "::notice::Promoting versionCode ${code} from '${{ inputs.from_track }}' to '${{ inputs.track }}'"
+
+      # Generated, not committed: docs/store-listing.md is the authored copy and this is a rendering
+      # of it. Runs unconditionally because it also writes the release notes, which accompany every
+      # promotion — publish-play.yml uploads no metadata at all, so this is the first and only place
+      # the notes for this versionCode reach Play. Whether the *descriptions and screenshots* go up
+      # is the update_listing input, applied at the supply step below.
+      - name: Render the listing metadata
+        run: python3 scripts/play-metadata.py --out fastlane/metadata/android --version-code '${{ steps.version.outputs.code }}'
+
+      - name: Promote to Play
+        env:
+          SUPPLY_JSON_KEY_DATA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          # One edit, committed once: the promotion, the release notes and — when asked — the listing
+          # all go up together, so Play reviews them as a single change instead of two. Splitting
+          # them is what turns one review wait into two.
+          #
+          # skip_upload_aab/apk are what make this a promotion rather than an upload: supply moves the
+          # release already sitting on the source track instead of looking for a binary to send.
+          args=(
+            --track '${{ inputs.from_track }}'
+            --track_promote_to '${{ inputs.track }}'
+            --version_code '${{ steps.version.outputs.code }}'
+            --skip_upload_aab true
+            --skip_upload_apk true
+            --metadata_path fastlane/metadata/android
+          )
+          if [ '${{ inputs.rollout }}' = '1.0' ]; then
+            # A full release is `completed`; passing a rollout fraction alongside it is what Play
+            # rejects as a contradiction.
+            args+=(--track_promote_release_status completed)
+          else
+            args+=(--rollout '${{ inputs.rollout }}' --track_promote_release_status inProgress)
+          fi
+          if [ '${{ inputs.update_listing }}' != 'true' ]; then
+            # Release notes still go up — they belong to this build. Descriptions, screenshots and
+            # graphics are left exactly as they are.
+            args+=(--skip_upload_metadata --skip_upload_images --skip_upload_screenshots)
+          fi
+          if [ '${{ inputs.dry_run }}' = 'true' ]; then
+            # Play validates the whole edit and then discards it. Nothing is published, nothing is
+            # sent for review — the honest way to prove this workflow before trusting it.
+            args+=(--validate_only)
+            echo "::notice::DRY RUN — validating against Play, committing nothing"
+          fi
+          bundle exec fastlane supply "${args[@]}"

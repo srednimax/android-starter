@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        API 29+ enforces bar contrast itself, so the app supplies none. See values/colors.xml.
+    -->
+    <color name="system_bar_scrim">#00000000</color>
+</resources>

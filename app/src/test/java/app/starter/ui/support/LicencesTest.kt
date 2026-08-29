@@ -1,0 +1,59 @@
+package app.starter.ui.support
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Parsing Licensee's report, which is the half worth testing — the screen that draws the result is
+ * a list. Everything here runs on the JVM because `Licences.kt` deliberately names no Android type.
+ */
+class LicencesTest {
+    @Test
+    fun `artifacts are grouped by licence, not by artifact`() {
+        val report =
+            """
+            [
+              {"groupId":"a","artifactId":"one","version":"1.0",
+               "spdxLicenses":[{"identifier":"Apache-2.0","name":"Apache License 2.0"}]},
+              {"groupId":"b","artifactId":"two","version":"2.0",
+               "spdxLicenses":[{"identifier":"Apache-2.0","name":"Apache License 2.0"}]}
+            ]
+            """.trimIndent()
+        val groups = groupLicences(report)
+        assertEquals(1, groups.size)
+        assertEquals(2, groups.single().artifacts.size)
+    }
+
+    @Test
+    fun `a dual-licensed artifact appears under both, because the obligation is per licence`() {
+        val report =
+            """
+            [
+              {"groupId":"a","artifactId":"one","version":"1.0",
+               "spdxLicenses":[
+                 {"identifier":"Apache-2.0","name":"Apache License 2.0"},
+                 {"identifier":"MIT","name":"MIT License"}]}
+            ]
+            """.trimIndent()
+        assertEquals(2, groupLicences(report).size)
+    }
+
+    @Test
+    fun `a plugin bump that adds an unknown field must not blank the screen`() {
+        val report =
+            """[{"groupId":"a","artifactId":"one","version":"1.0","somethingNew":true,
+                 "spdxLicenses":[{"identifier":"Apache-2.0","name":"Apache License 2.0"}]}]"""
+        assertTrue(groupLicences(report).isNotEmpty())
+    }
+
+    @Test
+    fun `malformed input throws, and the ViewModel is where that is caught`() {
+        // Deliberately *not* swallowed here. This function's job is to parse; a report it cannot
+        // parse means the build's generator is broken, and returning an empty list would hide that
+        // behind an empty screen. `LicencesViewModel` wraps the call so a user never sees a crash,
+        // which is the right place for the decision — one caller, one policy.
+        assertThrows(Exception::class.java) { groupLicences("not json") }
+    }
+}

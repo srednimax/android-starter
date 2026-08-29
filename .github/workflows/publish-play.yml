@@ -1,0 +1,133 @@
+name: Publish to Play
+
+# release-please tags the repo and publishes a GitHub Release when its release PR is
+# merged, and that publish is this workflow's trigger. So a build reaches Play only once
+# a real version exists with a CHANGELOG entry behind it — never from a bare push.
+on:
+  release:
+    types: [published]
+  # For a retry after a Play-side or credential failure, without cutting a version
+  # nobody wanted. Pick the tag in the Run workflow dialog.
+  workflow_dispatch:
+
+# The upload is not idempotent: Play permanently refuses a versionCode it has already
+# seen, so a second run of the same release fails at the last step having done all the
+# work. cancel-in-progress stays false — cancelling mid-upload is worse than queueing.
+concurrency:
+  group: publish-play
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Bundle, verify, upload to internal testing
+    runs-on: ubuntu-latest
+    steps:
+      # No `ref:` — on a release event the default checkout is already the tag, and on a
+      # manual run it is whatever ref was chosen in the dialog. Both are what we want.
+      - uses: actions/checkout@v7
+        with:
+          # NOT optional here, and not the same reason as the other workflows'. versionCode
+          # is the **git commit count** (docs/RELEASING.md), so a shallow checkout silently
+          # produces versionCode 1 — which is exactly what a shallow checkout once put in front of Play on a
+          # *signed* bundle. aab-version.py below would catch it; the point is to not build
+          # it at all.
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # The build reads its signing coordinates from local.properties and the keystore from a
+      # path outside the repo, because neither may ever be committed (ADR-0009). A CI runner
+      # has neither, so both are materialised from secrets here and removed again at the end.
+      #
+      # A release build whose key is incomplete fails at Gradle *configuration* time rather
+      # than emitting an unsigned artifact that only Play rejects half an hour later — see the
+      # `buildingRelease && !hasUploadKey` guard in app/build.gradle.kts. That guard is why a
+      # missing secret is caught here, loudly, instead of turning into a confusing build.
+      - name: Materialise the upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.UPLOAD_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::error::UPLOAD_KEYSTORE_BASE64 is not set — see docs/RELEASING.md for the four secrets this needs."
+            exit 1
+          fi
+          keystore="${RUNNER_TEMP}/upload.jks"
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > "${keystore}"
+          # Appended rather than written: local.properties may already carry sdk.dir.
+          {
+            echo "upload.storeFile=${keystore}"
+            echo "upload.storePassword=${STORE_PASSWORD}"
+            echo "upload.keyAlias=${KEY_ALIAS}"
+            echo "upload.keyPassword=${KEY_PASSWORD}"
+          } >> local.properties
+
+      # bundleRelease, never assembleRelease: Play wants an AAB, and an AAB cannot be
+      # adb install-ed — so the only build ever put on a phone is the one Play delivers.
+      - name: Build the bundle
+        run: ./gradlew bundleRelease
+
+      # The repo's standing rule, and the reason this step sits before the upload rather than
+      # after it: read the version, the permission set and the locales back out of the
+      # **artifact**, never out of the config that was supposed to produce them. Each of these
+      # four exists because that exact claim was once wrong in a build while every source-side
+      # check was green — versionCode 1 on a signed bundle, Polish missing from the build that
+      # went up, a permission set quietly grown from two to six, and R8 shrinking away the
+      # constructor of a class only the manifest names, which cost the guided scanner without
+      # costing a crash. They exit non-zero, so a bad artifact stops here instead of reaching
+      # testers.
+      - name: Verify the artifact
+        run: |
+          python3 scripts/aab-version.py
+          python3 scripts/aab-permissions.py
+          python3 scripts/aab-locale.py
+          python3 scripts/aab-reflection.py
+
+      - name: Show the signing certificate
+        run: keytool -printcert -jarfile app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload to internal testing
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # Must match `applicationId` in app/build.gradle.kts. Not derived, because a wrong
+          # value here uploads to a different app entry rather than failing.
+          packageName: com.example.starter
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+          # R8 is on from 1.9.0, so without this every Play crash report is unreadable
+          # obfuscated frames. The mapping is only useful alongside the exact build it came
+          # from, which is why it goes up in the same call rather than being kept for later.
+          mappingFile: app/build/outputs/mapping/release/mapping.txt
+
+      # if: always() because a run that failed *at* the upload is precisely when you want the
+      # bundle in your hands — to inspect it, or to upload it by hand.
+      - name: Keep the bundle and its mapping
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: play-release-${{ github.event.release.tag_name || github.run_id }}
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/mapping/release/mapping.txt
+          retention-days: 90
+
+      # Hosted runners are destroyed after the job, so this is belt-and-braces — it matters
+      # the day this workflow is pointed at a self-hosted runner and nobody re-reads it.
+      - name: Remove the key
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/upload.jks" local.properties

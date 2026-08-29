@@ -1,0 +1,23 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+# ktlint reads these. ktlint_official is the current default style; matches the
+# official Kotlin coding conventions (4-space indent, trailing commas, etc.).
+ktlint_code_style = ktlint_official
+max_line_length = 120
+# Compose-specific rule toggles (function-naming, filename) live in build.gradle.kts
+# via editorConfigOverride — Spotless's ktlint step doesn't read them reliably from here.
+
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

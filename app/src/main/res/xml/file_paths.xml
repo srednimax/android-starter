@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Two directories, both narrow.
+
+    camera/ is shared with the camera app we hand a Uri to: a staging area holding the just-taken
+    shot. MediaFiles re-encodes the picture into filesDir/images and the original is dropped, so
+    nothing durable is exposed.
+
+    exports/ holds a manual backup zip on its way to the share sheet (ADR-0005). Cache, deliberately:
+    a share the owner abandons is reclaimed by the OS rather than doubling the app's footprint.
+
+    preserved/ holds ADR-0007's pre-wipe database copies and ADR-0005's pre-restore snapshots, and is
+    shared only on the owner's own explicit "share" tap — a copy they cannot get off the phone is
+    only marginally better than no copy at all. Neither the live database nor the media directories
+    are listed here.
+-->
+<paths>
+    <cache-path
+        name="camera"
+        path="camera/" />
+    <cache-path
+        name="exports"
+        path="exports/" />
+    <files-path
+        name="preserved"
+        path="preserved/" />
+</paths>

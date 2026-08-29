@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only manifest additions. Merged into the debug variant and absent from a release build
+    entirely, which is the point: a receiver that seeds sample data has no business shipping.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!--
+            `exported="true"` because `adb shell am broadcast` is another process, and there is no
+            protected-broadcast exemption for a receiver we invented ourselves. That is only
+            acceptable *because this file is debug-only* — an exported receiver that wipes and
+            reseeds the database is exactly what should never reach a user's phone.
+        -->
+        <receiver
+            android:name=".debug.SeedReceiver"
+            android:enabled="true"
+            android:exported="true" />
+    </application>
+</manifest>

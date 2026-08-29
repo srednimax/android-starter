@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        This theme styles almost nothing — Compose M3 draws every pixel of real UI. What it does
+        decide is the window: no action bar, and a parent an AppCompatActivity will accept.
+
+        That parent is not a style preference, it is a hard requirement of the language switcher
+        (ADR-0004): AppCompatActivity throws on a theme that does not descend from Theme.AppCompat.
+        It is deliberately *not* a Material Components theme (Theme.MaterialComponents.*) — that
+        would pull in com.google.android.material, a second widget library rendering nothing, when
+        AppCompat's own theme is all the activity asks for.
+
+        DayNight makes the window background follow the system dark-mode setting, which keeps the
+        pixels Android owns — the window background, the frame drawn before Compose composes — in
+        step with the colour scheme Theme.kt picks.
+
+        The three items below are the app's edge-to-edge window, standing in for
+        `enableEdgeToEdge()` — see `values/colors.xml` for why that call is not made and why the
+        scrim is a colour resource rather than three items redefined per qualifier.
+
+        `windowDrawsSystemBarBackgrounds` is what makes the other two mean anything: without it the
+        platform owns the bar backgrounds and the colours are ignored. The bar *icons* are not set
+        here — they follow the app's own palette rather than the system's, which a static attribute
+        cannot express, so `AppTheme` writes them at runtime.
+    -->
+    <style name="Theme.App" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/system_bar_scrim</item>
+        <item name="android:navigationBarColor">@color/system_bar_scrim</item>
+    </style>
+</resources>

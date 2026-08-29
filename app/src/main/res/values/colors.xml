@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        The scrim behind the system bars, and the *only* thing that varies between the four copies
+        of this file. It exists because `MainActivity` deliberately does not call `enableEdgeToEdge()`.
+
+        That call was the app's edge-to-edge mechanism until Play flagged it: every path in
+        androidx.activity 1.13.0 — `EdgeToEdgeApi23`, `Api26`, `Api29` and `Api35` alike — reaches
+        `Window.setStatusBarColor` and `setNavigationBarColor`, both deprecated in Android 15, and
+        no version of the call avoids them. Verified in the AAR's bytecode rather than assumed.
+        `WindowCompat.setDecorFitsSystemWindows(window, false)` replaces the half Compose needs; the
+        colours are what is left, and a theme *attribute* is not the deprecated *method*.
+
+        **A scrim rather than transparency below API 29, and that is the load-bearing part.** The
+        content scrolls under the status bar, so without one the owner's text slides directly behind
+        the clock. From 29 the platform enforces bar contrast itself — `enforceStatusBarContrast`
+        defaults false and `enforceNavigationBarContrast` true, which is exactly what an
+        edge-to-edge app wants — so the scrim goes transparent there and the system takes over. From
+        35 the attribute is ignored altogether and edge-to-edge is the platform's own default.
+
+        The two values are androidx's own `DefaultLightScrim` and `DefaultDarkScrim`, copied so the
+        pixels do not change with the mechanism: this is a deprecation fix, not a redesign.
+
+        Four files, because of how Android resolves qualifiers: `night` is a *higher-precedence*
+        dimension than `vN`, so `values-night/` would beat `values-v29/` on an API 29+ phone in dark
+        mode and hand it a scrim it should not have. `values-night-v29/` is what settles that, and
+        it is why this is a colour rather than three items redefined per qualifier — a `<style>`
+        cannot merge across qualified files the way one `<color>` reference can.
+    -->
+    <color name="system_bar_scrim">#E6FFFFFF</color>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Not redundant with values-v29/: `night` outranks `vN` in Android's qualifier precedence, so
+        without this file a dark-mode phone on API 29+ would resolve values-night/ and get a scrim.
+        See values/colors.xml.
+    -->
+    <color name="system_bar_scrim">#00000000</color>
+</resources>

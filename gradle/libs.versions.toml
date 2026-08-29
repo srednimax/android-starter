@@ -1,0 +1,90 @@
+[versions]
+androidGradlePlugin = "9.0.1"
+# Accepted for one feature only: the pre-13 per-app locale backport (ADR-0004). 1.7.1 is the
+# current stable; 1.8.0 is still alpha.
+androidxAppCompat = "1.7.1"
+androidxCore = "1.18.0"
+androidxLifecycle = "2.10.0"
+androidxActivity = "1.13.0"
+androidxComposeBom = "2026.03.01"
+androidxTest = "1.7.0"
+androidxTestExt = "1.3.0"
+androidxTestRunner = "1.7.0"
+androidxTestEspresso = "3.7.0"
+coil = "3.5.0"
+coroutines = "1.10.2"
+datastore = "1.2.1"
+exifinterface = "1.4.2"
+junit = "4.13.2"
+kotlin = "2.3.20"
+# The backup manifest only. The serialization *plugin* is already here for Nav3's @Serializable
+# route keys; this is the JSON format itself, which Nav3 does not pull in.
+kotlinxSerializationJson = "1.8.1"
+# KSP dropped the "<kotlin>-<ksp>" suffix scheme at 2.3.0. No build exists for Kotlin 2.3.20
+# yet; 2.3.10 is the latest and the version mismatch is tolerated (probed, compiles clean).
+ksp = "2.3.10"
+room = "2.8.4"
+spotless = "7.0.2"
+# One daily sweep drives every non-exact reminder; exact alarms are a separate mechanism (ADR-0003).
+# 2.12.0 is still beta.
+workManager = "2.11.2"
+ktlint = "1.5.0"
+nav3Core = "1.0.1"
+lifecycleViewmodelNav3 = "2.10.0"
+# Build-time only: resolves the runtime classpath and emits the attribution list the
+# app renders itself. Nothing of it ships except the JSON it writes into assets.
+licensee = "1.14.1"
+
+[libraries]
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidxAppCompat" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "androidxComposeBom" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3"}
+# Icons only — the small core set, not material-icons-extended, which is thousands of vectors
+# for the handful any one app draws.
+androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core"}
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui"}
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview"}
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4"}
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling"}
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest"}
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidxLifecycle" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "androidxLifecycle" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTest" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExt" }
+androidx-test-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "androidxTestEspresso" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+junit = { module = "junit:junit", version.ref = "junit" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+# MigrationTestHelper. Instrumented only: it builds a database at an old version from the exported
+# schema JSON, which needs a real SQLite.
+androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
+# Compose-native image loading. Only the local-file path is wired up — no network module, because
+# nothing here is fetched from anywhere. Add `coil-network-okhttp` if your app needs remote images.
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+# The `-ktx` artifact is the one that carries CoroutineWorker; it depends on work-runtime, so this
+# single line brings both.
+androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "workManager" }
+# Instrumented only. `TestListenableWorkerBuilder` is the sanctioned way to call `doWork()` directly:
+# `WorkerParameters` has no public constructor, so without this the sweep's guard can only be tested
+# through the predicate it calls rather than through the worker the OS actually wakes.
+androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "workManager" }
+androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "nav3Core" }
+androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "nav3Core" }
+androidx-lifecycle-viewmodel-navigation3 = { module = "androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "lifecycleViewmodelNav3" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+licensee = { id = "app.cash.licensee", version.ref = "licensee" }

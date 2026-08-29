@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The base language. **Every user-visible string lives here**, never as a literal in Kotlin — that
+    is what makes the app translatable at all, and `TranslationTest` is what keeps it true.
+
+    Two rules with teeth:
+
+    - A string with a format argument must carry the **same arguments in every locale**, and
+      positional (`%1$s`) rather than bare (`%s`) whenever there is more than one, so a translator
+      can reorder them. `TranslationTest` checks this continuously.
+    - A count-dependent string is a `<plurals>`, never string concatenation. The categories that
+      apply differ by language — Polish has `one`, `few`, `many`, `other` where English has two —
+      and CLDR decides which, not the translator.
+
+    `translatable="false"` marks a string that is deliberately identical everywhere: the app's own
+    name, and the language endonyms in the switcher, which are named in their own language on
+    purpose so someone lost in a language they cannot read can find their way back.
+-->
+<resources>
+    <string name="app_name" translatable="false">Starter</string>
+
+    <!-- Navigation -->
+    <string name="tab_items">Items</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Common actions -->
+    <string name="action_back">Back</string>
+    <string name="action_save">Save</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+
+    <!-- Items -->
+    <string name="item_add">Add an item</string>
+    <string name="item_detail_title">Item</string>
+    <string name="item_title_label">Title</string>
+    <string name="item_notes_label">Notes</string>
+    <string name="item_pick_image">Choose a picture</string>
+    <!-- Says what to do, not that there is nothing. -->
+    <string name="items_empty">Nothing here yet. Tap + to add your first item.</string>
+    <plurals name="items_count">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+
+    <!-- Settings -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_material_you">Use my wallpaper colours</string>
+    <string name="settings_material_you_hint">Android 12 and later. Off by default, so the app keeps its own palette.</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">System</string>
+    <string name="settings_language_english" translatable="false">English</string>
+    <string name="settings_language_polish" translatable="false">Polski</string>
+    <string name="settings_reminders">Reminders</string>
+    <string name="settings_reminders_enabled">Remind me</string>
+    <string name="settings_reminders_hint">A single daily check. Nothing is sent anywhere.</string>
+    <string name="settings_data">Data</string>
+    <string name="settings_backup">Backup and restore</string>
+    <string name="settings_about">About</string>
+    <string name="settings_licences">Open-source licences</string>
+
+    <!-- Backup -->
+    <string name="backup_explainer">Everything stays on this phone. A backup is a single file you keep wherever you like.</string>
+    <string name="backup_export_records">Export records</string>
+    <string name="backup_export_everything">Export everything</string>
+    <string name="backup_restore">Restore from a file…</string>
+
+    <!-- Licences -->
+    <string name="licence_text_missing">The text of this licence is not bundled with the app.</string>
+
+    <!-- Notification channels. The convention `channel_<id>_name` / `channel_<id>_description` is
+         asserted by ReminderChannelsTest, so a new channel cannot ship with no name. -->
+    <string name="channel_reminders_name">Reminders</string>
+    <string name="channel_reminders_description">The daily check for anything due.</string>
+
+    <!-- The schema gate's screen. Deliberately plain: someone reading it is already worried. -->
+    <string name="schema_mismatch_title">This data was saved by a different version</string>
+    <string name="schema_mismatch_body">The data on this phone was saved at version %1$d, and this build reads version %2$d.</string>
+    <string name="schema_mismatch_copy">A copy has been kept as %1$s. Nothing has been deleted.</string>
+    <string name="schema_mismatch_continue">Continue and start fresh</string>
+</resources>

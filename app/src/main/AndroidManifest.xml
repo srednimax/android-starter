@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        POST_NOTIFICATIONS is a runtime permission on API 33+ and granted at install below it. Never
+        ask it from a bare system dialog on launch: Android allows only two denials before the
+        dialog stops appearing for good, so the ask must follow your own screen explaining what it
+        is for (ADR-0003).
+
+        RECEIVE_BOOT_COMPLETED is install-time and invisible to the user. It exists so BootReceiver
+        can put the daily sweep back after a restart.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+        SCHEDULE_EXACT_ALARM and **not** USE_EXACT_ALARM. The other one is auto-granted and can
+        never be revoked, which sounds like the better deal until you read Play's policy: it is
+        permitted only for apps whose core function is an alarm clock or a calendar. Declaring it in
+        anything else puts the whole listing at risk to save one settings screen.
+
+        This one is **denied by default** from Android 14 at targetSdk 33+, so assume nothing: read
+        `canScheduleExactAlarms()`, and let the inexact path still deliver via `setAndAllowWhileIdle`
+        — late but real (ADR-0003).
+
+        Delete this line if your app has no reason to be precise about a moment. Most do not.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!--
+        Package visibility (API 30+) for the one OEM screen the app offers to open: Xiaomi's
+        autostart manager, which on HyperOS decides whether background work runs at all. Without
+        this declaration `resolveActivity` returns null on a phone where the activity exists, and
+        the app would either hide a button that works or show one that does nothing.
+
+        A named package, not QUERY_ALL_PACKAGES: we look for exactly one thing and say which.
+
+        The three <intent> entries are for hand-offs to a mail app, Play and a browser. None of the
+        launches needs them — package visibility has never blocked `startActivity`, and each launch
+        is a try/catch around `ActivityNotFoundException`. What visibility *does* block is
+        `resolveActivity`, which would answer "no mail app" on every phone that has one. Nothing
+        performs such a pre-check today; these entries exist so one added later cannot silently lie.
+    -->
+    <queries>
+        <package android:name="com.miui.securitycenter" />
+
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
+    <!--
+        `android:localeConfig` is read by Android 13+ only, which is what tools:targetApi records —
+        it silences lint's "unused below minSdk" note without weakening anything at runtime. Older
+        devices ignore the attribute and AppCompat's backport reads the same file, so the list of
+        shipped languages stays in one place across the whole supported range (ADR-0004).
+
+        Auto Backup runs through AppBackupAgent, which names its own file set (ADR-0005) — so
+        `backup_rules.xml` and `data_extraction_rules.xml` are absent along with the attributes that
+        would point at them. Static include/exclude XML cannot checkpoint the write-ahead log, and
+        without that the platform is eligible to copy the live database and its `-wal` sidecar
+        mid-write: a backup that appears to work and restores corrupt.
+
+        `fullBackupOnly` is not optional beside `backupAgent`. Declaring an agent without it puts
+        the app on the key/value path, where the agent's no-op onBackup is what runs.
+    -->
+    <application
+        android:name=".MainApplication"
+        android:allowBackup="true"
+        android:backupAgent=".AppBackupAgent"
+        android:fullBackupOnly="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:windowSoftInputMode="adjustResize"
+        android:theme="@style/Theme.App"
+        tools:targetApi="33">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            The camera app writes the photo it takes into a file we own, and hands back a Uri for
+            it. A file:// Uri has been illegal to pass across apps since Android 7, so this provider
+            vends a content:// one instead, scoped to the single cache directory in file_paths.xml.
+            Photo Picker needs none of this — it hands us a Uri of its own — but "take a photo"
+            does. No CAMERA permission is declared on purpose: declaring it would make a camera
+            *required* at install time, and firing the system camera intent needs none.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!--
+            **WorkManager initialises on demand, not at process start.** Removing its entry from
+            androidx.startup's provider is half of that; `MainApplication : Configuration.Provider`
+            is the other half, and WorkManager then builds itself the first time
+            `WorkManager.getInstance` is called.
+
+            The default is an initializer that runs inside a ContentProvider, before
+            `Application.onCreate` — and `Application.onCreate` is where the schema wipe guard lives
+            (ADR-0001). Initialisation order between "the database may be about to be destroyed" and
+            "background work may start touching it" is not something to inherit from whatever the
+            merged manifest happens to produce.
+
+            `tools:node="remove"` on the meta-data alone, not on the provider: androidx.startup is
+            shared, and other libraries may register initialisers there.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <!--
+            Puts the daily sweep back after a restart, and does nothing else. It reads no persisted
+            schedule because there is none — what is due is derived, and the OS schedule was never
+            the source of truth.
+
+            `exported="false"` is correct even though the sender is another process: BOOT_COMPLETED
+            is a protected broadcast, which the system is permitted to deliver to a receiver no
+            other app can reach.
+        -->
+        <receiver
+            android:name=".work.BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            Delivered to this app when it has just been replaced by an update. A schema-bumping
+            update leaves the database at the old version until something opens it, and every
+            background entry point correctly declines to work over one — so without this the first
+            reminder after an update goes unposted and the chain stops until the user opens the app.
+            The receiver only enqueues; the migrating happens in a worker, which has minutes where a
+            receiver has ten seconds. Protected broadcast, so `exported="false"` is right.
+        -->
+        <receiver
+            android:name=".work.PackageReplacedReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            Not a service anybody starts — `android:enabled="false"` means it can never run. It is a
+            manifest entry used as a storage slot: AppCompat looks itself up here, reads the
+            `autoStoreLocales` flag, and takes responsibility for persisting the chosen language on
+            devices below 13, where the platform has no per-app locale store of its own. On 13+ the
+            framework persists it and this is ignored.
+
+            Chosen over a DataStore key deliberately (ADR-0004): DataStore reads are asynchronous —
+            a Flow, so `suspend` before the value exists — and the app would already have drawn its
+            first frame in the phone's language before the stored one resolved.
+        -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+    </application>
+
+</manifest>

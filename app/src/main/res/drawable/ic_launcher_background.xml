@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The adaptive icon's back layer: one flat rectangle, no art in it.
+
+    `make-launcher-icon.py` deliberately never writes this file, which makes recolouring the
+    identity **two** values that nothing checks against each other — PRIMARY in `art/mark.py`, and
+    the fillColor here. Changing one alone is the failure to expect.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#2B4C7E"
+        android:pathData="M0,0h108v108h-108z" />
+</vector>

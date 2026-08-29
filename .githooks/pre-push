@@ -1,0 +1,34 @@
+#!/bin/sh
+# Translation gate, run early and advisory only.
+#
+# The gate is a *merge* boundary, not a work boundary — "free while you work, strict
+# before it merges" (phase-8.md). A branch that still owes translations is a perfectly
+# ordinary work-in-progress, and that is the entire reason completeness left
+# TranslationTest in the first place. So this hook never blocks a push. It only tells
+# you now what CI would tell you in four minutes, while the strings are still in your
+# head and the round trip is free.
+#
+# Activate once per clone:  git config core.hooksPath .githooks
+# Nothing to bypass — it cannot fail a push. (--no-verify skips it regardless.)
+
+# No python, no report. Not worth interrupting a push over.
+command -v python3 >/dev/null 2>&1 || exit 0
+
+# Nothing to compare against until the base branch is on disk. Fetching here would put
+# the network on the critical path of every push, which is too much for a warning —
+# run `git fetch origin main` yourself when you want the comparison fresh.
+git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1 || exit 0
+
+report=$(python3 scripts/translation-gate.py --report origin/main 2>&1)
+
+case "$report" in
+    *"complete, and nothing stale"*)
+        # Quiet on success. A hook that speaks every time stops being read.
+        ;;
+    *)
+        printf '\n%s\n' "$report"
+        printf '\n%s\n\n' "── advisory: this push is going ahead. The gate decides at merge, not here."
+        ;;
+esac
+
+exit 0

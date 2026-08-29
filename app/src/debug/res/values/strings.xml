@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only strings. `translatable="false"` on every one, for two reasons: Android lint would
+    otherwise flag them as missing from every shipped locale, and `scripts/translation-gate.py`
+    would ask you to translate a developer menu.
+
+    This file is in `src/debug/res/`, so it is not merged into a release build at all.
+-->
+<resources>
+    <string name="debug_section" translatable="false">Debug</string>
+    <string name="debug_seed" translatable="false">Seed sample data</string>
+    <string name="debug_wipe" translatable="false">Delete all items</string>
+</resources>

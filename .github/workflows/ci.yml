@@ -1,0 +1,323 @@
+name: CI
+
+on:
+  # main only. Triggering on every branch as well as on pull_request ran the whole
+  # workflow twice for every PR — same commit, double the minutes — and put a
+  # permanently "skipped" instrumented job on each PR, which reads like a broken gate.
+  # A feature branch is covered the moment it has a PR; before that, use the Run
+  # workflow button (workflow_dispatch) if you want a check.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # For `edge-to-edge` alone — see the `if:` on that job. Off the hour because GitHub's scheduler
+  # queues everything cron-ed to :00 together.
+  #
+  # **The time here is a request, not a promise, and on a public repository it is a loose one.** The
+  # first two nightlies were queued at 14:11 and 15:22 UTC against a 03:17 cron — ten and twelve
+  # hours late. `schedule` is best-effort and deprioritised under load, and a run can be dropped
+  # outright rather than merely delayed, so a night with no run is *not* a green night. 01:47 buys
+  # more of that slack ahead of a European morning; it does not buy certainty. Read the run list,
+  # not the absence of a red.
+  schedule:
+    - cron: '47 1 * * *'
+
+concurrency:
+  # A new push to the same branch cancels the run still in progress.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, unit tests, lint
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 because both gates below compare this branch against `main`, and a
+      # comparison needs a common ancestor. The default depth-1 checkout of the PR *merge ref*
+      # against a depth-50 fetch of `main` gives two shallow histories that share no reachable
+      # ancestor: `git merge-base HEAD origin/main` exits 1, translation-gate.py reads that as
+      # "no previous", and its stale check silently becomes a no-op. Probed on PR #140 — a
+      # reworded English string whose translation had not followed passed CI green while the
+      # same command failed locally. A full clone is the cheap fix at this repo's size.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Handles the Gradle cache (dependencies + build cache) automatically.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Fail fast on formatting before the expensive build/test steps.
+      # Fix locally with `./gradlew spotlessApply`.
+      - name: Formatting (Spotless)
+        run: ./gradlew spotlessCheck
+
+      # A schema bump must arrive with its migration, its exported shape and its launch-gate
+      # assertion — the rule being that an update never loses an owner's data. Mechanical and cheap;
+      # whether the migration is *correct* is the committed fixtures' job, not this script's.
+      - name: Schema gate
+        run: |
+          base="${{ github.base_ref || github.event.repository.default_branch }}"
+          # No --depth: it would re-shallow the full clone above and put the bug back.
+          git fetch origin "$base"
+          python3 scripts/schema-gate.py "origin/$base"
+
+      # A branch merges with every shipped language complete, and not before. This is deliberately a
+      # gate rather than an assertion in TranslationTest: requiring a translation the moment the
+      # English string is written puts every feature branch behind a translation round, and gets the
+      # copy translated twice — once against the draft wording and again after review reworded it.
+      # Free while you work, strict before it merges. Run `--report` locally to see what you owe.
+      - name: Translation gate
+        run: |
+          base="${{ github.base_ref || github.event.repository.default_branch }}"
+          # No --depth: it would re-shallow the full clone above and put the bug back.
+          git fetch origin "$base"
+          python3 scripts/translation-gate.py "origin/$base"
+
+      # The version Play is told about must be the version the notes describe. play-metadata.py
+      # uploads the newest notes it finds and nothing else consults them, so a bumped versionName
+      # with unmoved notes ships the *previous* release's text — silently. That is how 1.9.0 reached
+      # production describing 1.8.0, and Play does not allow notes to be edited on a live release.
+      # No base ref: this compares two files in the same tree, not this branch against another.
+      - name: Notes gate
+        run: python3 scripts/notes-gate.py
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Unit tests
+        run: ./gradlew test
+
+      - name: Lint
+        run: ./gradlew lint
+
+      # if: always() so reports still upload when a step above failed —
+      # that is exactly when you want to read them.
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: |
+            app/build/reports/
+          retention-days: 14
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+  instrumented:
+    name: Instrumented tests (API ${{ matrix.api-level }})
+    runs-on: ubuntu-latest
+    # ~3-6 min per leg, and deliberately unconditional now: the trigger list above is
+    # what keeps it off feature-branch pushes. It used to carry an `if:` naming
+    # pull_request and main, which every surviving trigger already satisfies — a
+    # condition that is always true is worse than no condition, because it looks like
+    # a gate. Restore it if `push` ever widens past main again.
+    #
+    # Almost none of that time is the tests: the suite runs in about 8 seconds, and the
+    # rest is the emulator image and boot (the dominant chunk, and the one that varies
+    # run to run) plus building and installing the two APKs. Worth knowing before
+    # reaching for test sharding to speed this up — splitting 8 seconds across more
+    # jobs buys nothing while each new job pays the setup again. The lever that would
+    # actually work is AVD snapshot caching, and at these times it is not worth it.
+    strategy:
+      # Every level reports. Stopping the matrix at the first red would hide whether a
+      # failure is "this build is broken" or "this build is broken *below API 31*",
+      # which is the entire question the bottom of the matrix exists to answer.
+      fail-fast: false
+      matrix:
+        include:
+          # The `minSdk` floor. Three SDK_INT branches — the pre-S path into system
+          # backup settings, the pre-R agent branch and the pre-S theme — plus
+          # AppCompat's pre-13 locale backport (ADR-0004) run *only* down here, and a
+          # single modern emulator never executes any of them. `default` rather than
+          # `aosp_atd`: the slim ATD images start at API 30, so 26 has no such image.
+          - api-level: 26
+            target: default
+          # The long-standing leg, kept as-is.
+          - api-level: 34
+            target: aosp_atd
+          # `targetSdk`. Where the platform applies its newest behaviour changes to us
+          # rather than grandfathering them.
+          - api-level: 36
+            target: aosp_atd
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # The hosted runner supports nested virtualisation, so the emulator is
+      # hardware-accelerated. Without KVM this job would take hours.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run instrumented tests
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          disable-animations: true
+          script: ./gradlew connectedDebugAndroidTest
+
+      # The name has to carry the API level: upload-artifact refuses to write the same
+      # artifact name twice, so a shared name fails every leg after the first.
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: instrumented-reports-api${{ matrix.api-level }}
+          path: app/build/reports/androidTests/
+          retention-days: 14
+
+  # The edge-to-edge matrix, on emulators rather than on the one physical phone.
+  #
+  # **The prize is API 26-28, not parallelism.** The phone is the only physical device and it is
+  # modern, so every claim about how the app draws under the system bars below API 29 was argued
+  # from theme XML and never observed. An emulator observes it.
+  #
+  # Deliberately NOT on `pull_request`, and deliberately not part of `instrumented-gate`:
+  # `edge-to-edge.py` walks ~75 scenes per cell by driving uiautomator taps, and its `settle()`
+  # timings are tuned to real hardware — an emulator is where they go flaky rather than fail. A
+  # flaky check on every PR is a check people learn to re-run without reading, which is worse than
+  # no check. Nightly plus the Run workflow button keeps the coverage and keeps the merge path
+  # honest. Promote it to `pull_request` once a few weeks of nightlies have shown it steady.
+  edge-to-edge:
+    name: Edge-to-edge (API ${{ matrix.api-level }}, ${{ matrix.config }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # One configuration per job, so ~75 scenes rather than the ~300 a whole leg used to walk in one
+    # go. The old shape put all four configurations of API 36 in a single job that was still going
+    # after 13 minutes with no cell finished, against a 240-minute ceiling it would plausibly have
+    # reached. Fanning out costs an emulator boot and a build per job — minutes are free on a public
+    # repository — and buys a wall clock a nightly can actually finish in, plus a red that names the
+    # configuration that broke instead of the API level that contained it.
+    timeout-minutes: 90
+    strategy:
+      # Same reasoning as `instrumented`: the bottom of the matrix exists to answer "is this broken
+      # *below API 29*", and stopping at the first red destroys that answer. It matters more here —
+      # these cells are now siblings rather than steps inside one job.
+      fail-fast: false
+      matrix:
+        api-level: [26, 34, 36]
+        config: [portrait-gesture, portrait-threebutton, landscape-gesture, landscape-threebutton]
+        include:
+          - api-level: 26
+            target: default
+          # `default`, not `aosp_atd`, and API 36 next door keeps ATD deliberately. The API 34 ATD
+          # image ships no `com.android.internal.systemui.navbar.*` overlays and no readable
+          # `secure navigation_mode`, so every cell on it was a configuration nothing could confirm
+          # the device was in — four red jobs saying exactly that. ATD strips SystemUI pieces to run
+          # faster, and how much it strips varies by level: the same target on API 36 has the
+          # overlays and runs all four cells. A full AOSP image has them at every level.
+          - api-level: 34
+            target: default
+          - api-level: 36
+            target: aosp_atd
+        exclude:
+          # API 26-28 has no gesture navigation at all. `usable_configs` knows that and would skip
+          # the cell green, but only after booting an emulator to be told a platform fact — so the
+          # job is not created in the first place. Everything the script discovers at *runtime*, an
+          # image with no navigation overlays included, is deliberately left to the script.
+          - api-level: 26
+            config: portrait-gesture
+          - api-level: 26
+            config: landscape-gesture
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the matrix
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          # Animation scale changes transitions, not final layout, and every scene is captured
+          # after a `settle()` — so this costs the evidence nothing and removes a whole class of
+          # mid-transition screenshot from the flakiest part of this job.
+          disable-animations: true
+          script: |
+            ./gradlew installDebug
+            # One line on purpose: `android-emulator-runner` does not honour a backslash
+            # continuation here, and passes the backslash on as an argument of its own.
+            # `--retry-unreached 2` is for the emulator and nowhere else. A missed tap out of ~75
+            # scenes reddens a 36-minute cell, and re-running the whole cell to repair one scene
+            # costs another 36 — so the scene is re-walked in place instead, for about a minute.
+            # It does not soften the check: a scene that never lands still fails the assert, and
+            # one that needed two goes is printed as `flaky:` whether the run is red or green.
+            python3 scripts/edge-to-edge.py --out artifacts/edge-to-edge --assert-clean --retry-unreached 2 --config ${{ matrix.config }}
+
+      # if: always() because a red run is exactly when the screenshots and the report are wanted.
+      - name: Upload matrix
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          # The configuration is in the name because ten jobs now upload, and two artifacts with
+          # one name is an error rather than a merge.
+          name: edge-to-edge-api${{ matrix.api-level }}-${{ matrix.config }}
+          path: artifacts/edge-to-edge/
+          retention-days: 14
+
+  # The stable name the branch ruleset requires, and the whole reason this job exists.
+  #
+  # A required status check is matched **by name**. The matrix above names its legs after
+  # the API level, so the names change whenever the matrix does — and the day that
+  # happened, the ruleset sat waiting for a check nobody reports any more and the PR
+  # could not be merged with three green legs on it. Requiring this one instead means an
+  # API level can be added or dropped without anyone remembering to edit repository
+  # settings to match.
+  instrumented-gate:
+    name: Instrumented tests
+    needs: [instrumented]
+    # Without `always()` this is skipped when a leg fails, and a skipped required check
+    # is one that never reports — the exact hang it exists to prevent, arriving by a
+    # different road.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      # `needs.<job>.result` for a matrix is a single verdict over every leg: `success`
+      # only if they all succeeded. Testing for that rather than for `failure` is what
+      # makes a **cancelled** or **skipped** leg fail the gate too, instead of quietly
+      # passing it.
+      - name: Fail unless every matrix leg succeeded
+        if: needs.instrumented.result != 'success'
+        run: |
+          echo "instrumented matrix result: ${{ needs.instrumented.result }}"
+          exit 1

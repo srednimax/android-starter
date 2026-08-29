@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The languages this app ships in. English is the base and the fallback for every unmatched
+    locale.
+
+    Android 13+ reads this list to build the app's entry in Settings › Apps › <app> › Language.
+    Below 13 the platform has no such screen and AppCompat's backport reads the same list.
+
+    It is also what the platform checks before honouring `setApplicationLocales()`: on 13+ an app
+    locale outside this list is declined outright. Every entry here needs a matching `AppLanguage`
+    constant — `AppLanguageTest` parses this file and asserts the two agree — and a matching
+    `res/values-<tag>/strings.xml`, which `scripts/translation-gate.py` requires to be complete
+    before a branch may merge.
+
+    **Adding a locale here is the whole opt-in.** Do it when the translation is ready, not before:
+    an entry with no strings behind it offers the user a language the app cannot speak.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="pl" />
+</locale-config>

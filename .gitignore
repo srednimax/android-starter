@@ -1,0 +1,32 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Personal, machine-local Claude Code instructions
+/CLAUDE.local.md
+
+# Context handoff note (written by /handoff, resumed after /clear)
+/HANDOFF.md
+
+# Signing keys. The upload keystore lives outside the repo entirely (ADR-0009); this is a
+# second line of defence in case one is ever created in the working tree.
+*.jks
+*.keystore
+
+# Byte-code from the art generators in art/ — they are plain scripts, run in place.
+__pycache__/
+fastlane/report.xml
+fastlane/README.md
+fastlane/metadata/
