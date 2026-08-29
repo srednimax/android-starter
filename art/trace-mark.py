@@ -9,7 +9,7 @@ sub-pixel shape information. So:
      cream->ground colour axis, keeping the antialiased edge as real data;
   2. marching squares at 0.5 with linear interpolation -> sub-pixel contours;
   3. Douglas-Peucker to drop redundant points;
-  4. detect true corners so the tapering wedges (ear split, leg notch) keep their points;
+  4. detect true corners, so a tapering wedge keeps its point instead of being rounded off;
   5. Schneider least-squares cubic fitting between corners.
 
 Writes `path_outer.txt` and `path_eye.txt` next to the working directory and prints both.
@@ -17,13 +17,20 @@ Paste them into `mark.py`'s MARK and EYE. The paste is deliberate rather than au
 `mark.py` is the single definition of the mark, and a definition a script rewrites on every
 run is one nobody can hand-correct.
 
-    python3 art/trace-mark.py
+    python3 art/trace-mark.py concept.png
+
+The source should be **two-tone and antialiased** — a light mark on a dark ground or the
+reverse — at a few hundred pixels on its longest side. A photograph, a gradient or a
+drop shadow will produce a contour that follows the shading rather than the shape.
 """
+import argparse
 import math
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
-SRC = str(Path(__file__).parent / 'concept-1.png')
+# The concept image, given on the command line. Defaults to `concept.png` beside this file.
+SRC = str(Path(__file__).parent / 'concept.png')
 CROP = (6, 6, 591, 592)          # the generator left a near-white frame on two edges
 SURFACE = (254, 247, 237)
 PRIMARY = (107, 50, 58)
@@ -275,6 +282,14 @@ def signed_area(ring):
 
 
 def main():
+    global SRC
+    parser = argparse.ArgumentParser(description="Trace a two-colour concept image into cubic path data.")
+    parser.add_argument("image", nargs="?", default=SRC, help="the concept image (default: art/concept.png)")
+    args = parser.parse_args()
+    SRC = args.image
+    if not Path(SRC).is_file():
+        sys.exit(f"trace-mark: {SRC} not found. Pass your concept image as an argument.")
+
     f, W, H = insideness()
     segs = marching_squares(f, W, H)
     rings = chain(segs)
