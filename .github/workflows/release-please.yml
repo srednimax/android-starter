@@ -15,6 +15,13 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # The template repository itself has no versions. It never ships an AAB, so a release
+    # PR here bumps a `versionName` nothing consumes and then fails the notes gate — which
+    # is correct of the gate: it is demanding Play release notes for a version that will
+    # never reach Play. A repo *generated* from the template is not itself a template, so
+    # this condition is false there and release-please runs normally. Nothing for
+    # bootstrap.py to rewrite, and no repository name hardcoded.
+    if: github.event.repository.is_template != true
     steps:
       - uses: googleapis/release-please-action@v4
         with:

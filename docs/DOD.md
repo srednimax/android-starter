@@ -42,9 +42,11 @@ close. Whenever `APP_SCHEMA_VERSION` changes, all five hold before the release g
 - [ ] **Create the upload keystore, outside the repo**, and put its four values in
       `local.properties`. Back it up somewhere that is not this machine: losing it means never being
       able to update the app on Play again.
-- [ ] **Set up the GitHub repository** — the release-please token, the merge setting, the `main`
-      ruleset and Pages. *Setting up a new repository* in [`RELEASING.md`](RELEASING.md). None of
-      it is in the code, and the build stays green while it is all still undone.
+- [ ] **Set up the GitHub repository** — `python3 scripts/repo-setup.py` does the ruleset, the
+      merge setting and Pages; the release-please PAT is the one step it cannot do, and without it
+      no release PR is ever opened. *Setting up a new repository* in [`RELEASING.md`](RELEASING.md).
+      **None of this is inherited from the template** — GitHub copies files, never settings — and
+      the build stays green while it is all still undone.
 - [ ] **Set the five Play secrets and create the service account** (`docs/RELEASING.md`) — the
       service account is the one step CI cannot do for itself.
 - [ ] **Decide the `applicationId` deliberately.** It is fixed the moment the Play entry is created —

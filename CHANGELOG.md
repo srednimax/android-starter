@@ -1,3 +1,1 @@
 # Changelog
-
-Nothing released yet.
