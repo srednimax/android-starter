@@ -203,9 +203,18 @@ jobs:
   # flaky check on every PR is a check people learn to re-run without reading, which is worse than
   # no check. Nightly plus the Run workflow button keeps the coverage and keeps the merge path
   # honest. Promote it to `pull_request` once a few weeks of nightlies have shown it steady.
+  #
+  # The second half of the `if:` is the same reasoning as release-please's, for the same repository.
+  # This job drives ~75 scenes per cell against screens the template does not have yet — its app is
+  # a placeholder, so the nightly boots ten emulators to walk a UI nobody has written and reports a
+  # red that means nothing. A repo *generated* from the template is not itself a template, so the
+  # condition is false there and the nightly runs normally. Nothing for repo-setup.py to rewrite,
+  # and no repository name hardcoded. Parentheses are load-bearing: `&&` binds tighter than `||`.
   edge-to-edge:
     name: Edge-to-edge (API ${{ matrix.api-level }}, ${{ matrix.config }})
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && github.event.repository.is_template != true
     runs-on: ubuntu-latest
     # One configuration per job, so ~75 scenes rather than the ~300 a whole leg used to walk in one
     # go. The old shape put all four configurations of API 36 in a single job that was still going
