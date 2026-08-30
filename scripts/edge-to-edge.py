@@ -1042,6 +1042,24 @@ def seed_variant(variant: str) -> None:
 _LIVE_NOTICE = False
 
 
+def arm_live_notice() -> None:
+    """Make one notification post over the scene about to be captured. **Unwired in the template.**
+
+    There is nothing generic to put here: what can be made to post on demand is whatever your debug
+    build exposes, so this is a seam rather than an implementation. Wire it like [seed_variant] — a
+    broadcast to a receiver in `app/src/debug/` that re-arms a slot just behind `now`, checked on
+    the broadcast result so a silent no-op cannot pass for an armed one.
+
+    It raises rather than returning quietly because a `--live-notice` run that arms nothing produces
+    a full green report of scenes no notification ever covered — evidence for a claim the run never
+    tested, which is worse than the red.
+    """
+    raise StepFailed(
+        "--live-notice is an unwired seam in the template: implement arm_live_notice() against "
+        "your debug build's receiver before using the flag"
+    )
+
+
 def invalidate_seed() -> None:
     """Forget what the phone is carrying, so the next [ensure_seed] reseeds whatever it asks for."""
     global _SEEDED
@@ -1552,7 +1570,7 @@ def main() -> int:
         help=(
             "re-arm an unanswered dose slot a minute in the past before every scene, so a reminder "
             "banner tries to post over each one — the case DND exists for, without waiting for the "
-            "seed's own 20:00 dose. Debug build only; see [arm_live_dose]"
+            "seed's own 20:00 dose. Debug build only; see [arm_live_notice]"
         ),
     )
     parser.add_argument("--restore", action="store_true", help="undo the pinned rotation and nav mode")
@@ -1579,7 +1597,7 @@ def main() -> int:
     args = parser.parse_args()
 
     global _LIVE_NOTICE
-    _LIVE_NOTICE = args.live_dose
+    _LIVE_NOTICE = args.live_notice
 
     if args.restore:
         set_locale(None)
