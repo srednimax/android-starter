@@ -84,9 +84,8 @@ asserts one thing: the newest `### x.y.z` under `## Release notes` in
 
 It exists because `play-metadata.py` uploads **the newest notes it finds** and nothing else consults
 them. Bump `versionName` without moving the notes and the previous release's text goes up attached to
-the new build, with nothing to notice it. That is how **1.9.0 reached production describing 1.8.0** on
-2026-08-26 — a note predating the timeline, multi-photo trays, kilogram entry and the light/dark
-override. ⚠️ **Play does not allow release notes to be edited on a live release**, so the correction
+the new build, with nothing to notice it. That is how, in the app this template was extracted from,
+**1.9.0 reached production describing 1.8.0** — a note predating four features users could now see. ⚠️ **Play does not allow release notes to be edited on a live release**, so the correction
 could not be made where it was needed; it waited for the next upload.
 
 The gate is invisible on ordinary branches — `versionName` is still the last released version and the
@@ -160,12 +159,19 @@ keytool -printcert -jarfile app/build/outputs/bundle/release/app-release.aab
 
 All four scripts **exit non-zero** rather than printing and leaving you to read.
 Each exists because the corresponding claim was once wrong in an artifact while
-every source-side check was green: `versionCode` 1 on a signed bundle (3a), Polish
-missing from the build that went up (fixed in 1.0.1), a permission set that had
-quietly grown from two to six (found at 4h), and R8 shrinking away the no-arg
-constructor of a class only the manifest names, which disabled the guided document
-scanner without raising anything (10c). The pattern is the same every time — the
-config said one thing, the artifact said another, and nothing compared them.
+every source-side check was green, in the app this template was extracted from:
+`versionCode` 1 on a signed bundle, Polish missing from the build that went up, a
+permission set that had quietly grown from two to six, and R8 shrinking away the
+no-arg constructor of a class only the manifest names, which disabled a feature
+without raising anything. The pattern is the same every time — the config said one
+thing, the artifact said another, and nothing compared them.
+
+⚠ **The allowlists in these scripts describe the template, not your app.** An app
+built from it failed its first release upload at `aab-permissions.py`, because the
+table still listed the previous app's permissions. Whenever you delete a feature
+(reminders, WorkManager, the camera path), delete its rows in the same commit — and
+run the four scripts against a local `bundleRelease` before the first tag, not in
+the workflow that is supposed to ship it.
 
 `aab-reflection.py` is the newest and the one whose failure is quietest, because
 its subject never crashes: a class discovered by `Class.forName` and built with a
@@ -173,10 +179,14 @@ no-arg constructor just isn't there, and the framework that wanted it carries on
 without it. It reads the classes to check **out of the manifest** — every
 `<meta-data>` whose value marks one — rather than from a list that would go stale,
 and looks each up in the dex. `aab-permissions.py` does the other half of the
-same job: it asserts no `android:screenOrientation` survives into the artifact, so
-a dependency bump cannot quietly re-lock the screen. (A library AAR pinning its own
-delegate activity to portrait is a real Play policy finding, and it is invisible in
-your own source.)
+same job: it asserts the only `android:screenOrientation` values in the artifact are
+the ones listed in its `EXPECTED_ORIENTATION` — none, as shipped — so a dependency
+bump cannot quietly lock a screen, and an edit cannot quietly unlock one you decided
+to lock. (A library AAR pinning its own delegate activity to portrait is a real Play
+policy finding, and it is invisible in your own source.) It was a blanket ban once,
+and that is how an app built from this template tagged a release that never reached
+Play: the app had grown a deliberate lock and the gate still asserted it had none.
+Lock a screen, add the row, same commit.
 
 Don't reach for `aapt2 dump xmltree` here. An AAB stores its manifest as
 **protobuf**, not the binary XML aapt2 reads, so it prints nothing and exits `0` —
@@ -197,7 +207,7 @@ is the commit count), materialise the upload key from secrets, `bundleRelease`, 
 four `aab-*.py` artifact checks, print the signing certificate, upload the AAB **and its
 R8 mapping**, keep both as a build artifact for 90 days, delete the key.
 
-The mapping matters from 1.9.0: R8 is on, so without it every Play crash report is
+The mapping matters because R8 is on: without it every Play crash report is
 obfuscated frames.
 
 ### The five secrets this workflow needs
@@ -215,8 +225,8 @@ Actions*:
 | `PLAY_SERVICE_ACCOUNT_JSON` | the whole service-account JSON, pasted as-is |
 
 ⚠️ **The keystore is still never committed** — this changes where a copy *lives*, not the
-rule. The one on disk stays outside the repo (ADR-0005); base64 in a GitHub secret is a
-second copy, and losing control of it means resetting the upload key. That is recoverable
+rule. The one on disk stays outside the repo (*The upload key*, below); base64 in a GitHub
+secret is a second copy, and losing control of it means resetting the upload key. That is recoverable
 (Google holds the permanent app-signing key) but it is not free.
 
 ### Creating the service account — the part that is not in this repo
@@ -230,12 +240,72 @@ Once, by hand, and it is the only step CI cannot do for itself:
 3. On that account, **Keys → Add key → JSON**. The file downloads once — that is the
    `PLAY_SERVICE_ACCOUNT_JSON` value.
 4. Play Console → **Users and permissions → Invite new user**, the service account's email.
-   Grant it **Release to testing tracks** on this app (your `applicationId`)
-   and nothing wider. It does not need production rights to do this job.
+   **Account permissions: none — every box empty.** That is the field that would quietly make
+   this a credential for every app on the developer account rather than for this one.
+   **App permissions, on this app only** (your `applicationId`), exactly two boxes:
+   *View app information (read-only)* — the baseline the others build on — and
+   *Release apps to testing tracks*, which is the one that does the work.
+   Deliberately **not** *Release to production*: production stays a human decision behind the
+   environment gate. Also not *Manage testing tracks and edit tester lists* — CI uploads builds,
+   it does not manage people.
 
-Propagation between Play and the API is not instant — a permission granted in the Console
-can take a few minutes to be visible to the API, so a first run that 401s is worth simply
-re-running before debugging it.
+**One service account per app, scoped with a permission group.** *Users and permissions* →
+**Permission groups** → *Create permission group* lets you tick the two boxes once and attach the
+group to an email afterwards. Name it for the app (`<App> — CI release`), not for the role: a group
+carries its own app scoping, so one role-shaped group reused across apps would have to list every
+app in it — which merges exactly the credentials that a separate service account per app exists to
+keep apart. Invite the email before creating the group; a user must exist to be selectable in it.
+⚠ **Leave *Set access expiry date* unchecked.** It is offered on the create screen and it is wrong
+for a machine identity: on that date publishing starts failing, wearing the same 401 as the
+propagation delay below.
+
+⚠ **The production workflow uses this same secret, and wants two more boxes.** With testing-track
+rights only, the first run of `publish-play-production.yml` **403s** — a permission missing, not the
+pipeline broken. It needs *Release to production, exclude devices, and use Play App Signing*, and —
+**only when run with `update_listing: true`** — *Manage store presence*, because that is the run that
+pushes descriptions, images and screenshots. **Release notes need neither**: they belong to the track
+release rather than the listing. Granting these is the deliberate act that opens the production
+door. Nothing beyond the two boxes is needed for `publish-play-closed.yml`, which never touches the
+listing, nor for `publish-play.yml`, which sends the AAB and its mapping and nothing else.
+
+**Retry before you debug.** Propagation between Play and the API is not instant — a permission
+granted in the Console can take minutes to reach the API, so a first run that 401s is worth simply
+re-running. The first green run of an app built from this template came on the fourth attempt, and
+all three failures were one cause: the Google Play Android Developer API not yet enabled in the
+Cloud project (step 1), then its own propagation delay. Re-run with `workflow_dispatch` — those
+attempts cost nothing, whereas a new tag costs a version.
+
+⚠ **The upload step warns on every run**: `r0adkll/upload-google-play` reports
+`'track' is deprecated and will be removed in a future release. Please migrate to 'tracks'`. It
+uploads correctly today; it is written down because a pinned-action bump breaking a release is the
+worst possible moment to read a deprecation notice for the first time.
+
+### The upload key
+
+Created once, outside the repo, and the only one there will ever be short of a reset with Google.
+**Fill this table in the day you create it** — Play shows the fingerprint as the expected *upload*
+certificate, and a value that only ever existed in your scrollback is one you will not have when
+it is asked for.
+
+| | |
+| --- | --- |
+| File | `~/.keystores/<app>-upload.jks` — **outside the repo**; `*.jks` is gitignored as a second line of defence |
+| Type / alias | PKCS12, alias `upload`. PKCS12 keeps **one** password, so `upload.storePassword` and `upload.keyPassword` are the same string |
+| Key | *(algorithm, size, valid until)* |
+| SHA-256 | *(fingerprint)* |
+| Backed up to | *(somewhere that is not this machine)* |
+
+```bash
+keytool -genkeypair -v -storetype PKCS12 -keystore ~/.keystores/<app>-upload.jks \
+  -alias upload -keyalg RSA -keysize 4096 -validity 10000
+keytool -printcert -jarfile app/build/outputs/bundle/release/app-release.aab   # read it back
+```
+
+**That fingerprint is the one to compare** against what Play shows as the expected upload
+certificate. It is not the app-signing certificate: Play re-signs with a key Google holds, which is
+why losing this one is recoverable at all — and why a build signed with the wrong key is rejected at
+upload rather than breaking installs. The four values live in `local.properties`, which is
+gitignored.
 
 ### Why internal, and what it does not prove
 
@@ -243,7 +313,73 @@ Internal processes in minutes with no Google review, which is what makes it a sa
 automatic target. ⚠️ **It is not the track for an upgrade proof.** An internal-track
 install demands an uninstall on the device where a closed-track one updates in place, so a
 build that arrives this way cannot stand in for "an existing owner's install survived the
-update". Promoting to closed or production stays a Console decision, made by a human.
+update". Promoting to closed testing is what `publish-play-closed.yml` below is for, and
+production has its own workflow after it. Both are manual: neither happens without you clicking
+*Run workflow*.
+
+## Reaching closed testing (manual, promotes)
+
+`.github/workflows/publish-play-closed.yml` — **Run workflow**, never automatic, for the same reason
+production is not: no event means "the build on internal is ready for the testers". You decide that,
+so you trigger it. It promotes the build already sitting on internal to a **closed** track and, like
+the production workflow, never runs `bundleRelease` and never materialises the upload key.
+
+⚠ **A new personal developer account cannot reach production without a closed test first**: at the
+time of writing, at least 12 testers opted in for 14 continuous days, then an access application in
+the Console. The window is measured on testers being opted in, which is what shapes this workflow.
+
+| Input | Default | What it does |
+| --- | --- | --- |
+| `track` | `alpha` | destination closed track. Free text, because Console's *Create track* makes ids nobody can enumerate here |
+| `version_code` | *(blank)* | which build to promote; blank asks Play what is on internal |
+| `release_version` | *(blank)* | which release's notes go up; blank takes the newest in `docs/store-listing.md` |
+| `dry_run` | `false` | validate against Play, commit nothing |
+
+The source track is hardcoded to `internal`. That is the whole point of a second workflow: it is the
+one promotion made over and over during a closed test, and a dialog field whose only correct answer
+is `internal` is a field that can be got wrong.
+
+**It cannot reach the public, by construction.** Play has exactly three tracks that are not closed
+testing — `production`, `beta` (open testing) and `internal` — and every other track id is a closed
+one, because Console's *Create track* only makes those. So the first step is a deny list of three,
+which is a complete list, and a typo in the `track` box fails the run instead of publishing something.
+That guard is also what pays for the missing approval gate: this job declares no `environment`,
+because a required reviewer is what stands between a build and every *owner*, and there is nobody to
+protect from a build reaching people who asked to test it.
+
+⚠ **`dry_run` defaults to false here**, where production's defaults to true. A closed promotion is
+reversible from the Console — halt the release — and cannot reach anyone who did not opt in, so making
+every routine promotion a two-run ritual would only teach the habit of clicking through the first one.
+Turn it on for the first run of this workflow, and any time the dialog holds a value you are unsure of.
+
+**It needs no new Play permissions.** The three `--skip_upload_*` flags for metadata, images and
+screenshots are unconditional rather than an input, and that is a permission boundary rather than a
+preference: descriptions, screenshots and graphics belong to the *app* and not to a track, so pushing
+them from a test promotion would edit the **public** listing and would want *Manage store presence*.
+Release notes are part of the track release, so they still ride up — `--skip_upload_metadata` does
+not skip changelogs.
+
+**Always `completed`, never a rollout fraction.** A closed test wants every tester on the same build.
+A fraction would quietly hold some of them back on the previous one, and a tester who never receives
+the build is a tester quietly not testing.
+
+⚠ **`release_version` is the field that goes wrong in silence.** `play-metadata.py` renders the newest
+`### x.y.z` under *Release notes* in `docs/store-listing.md`, which is the right answer only while the
+checkout still points at the release being promoted. Promote an older build from a `main` that has
+moved on and the testers are told about a version they do not have. Run the workflow from the tag, or
+name the version in the dialog.
+
+⚠ **The first release on a closed track waits on Play review.** A green run means the promotion was
+accepted, not that any tester has the build. Later releases on a reviewed track appear within minutes.
+
+⚠ **A green closed promotion says nothing about the listing.** It skips the listing by construction,
+and every *dry* listing run is validated and discarded. Nor does the listing wait for production: it
+belongs to the app rather than to a track, so the first `publish-play-production.yml` run with
+`update_listing: true` and `dry_run: false` — to any track — is the one that changes what the Console
+shows. Re-promoting a build a track already holds is accepted, so a listing-only push is that
+workflow re-promoting what the track already has. And before production access is granted, a dry run
+`internal → production` fails with `Precondition check failed.` rather than a 403: that is the
+production track not being open to the account yet, and says nothing about the service account.
 
 ## Going to production (manual, gated, staged)
 
@@ -282,7 +418,7 @@ promotion: it moves the release already sitting on `from_track` instead of looki
 
 | Input | Default | What it does |
 | --- | --- | --- |
-| `track` | `production` | destination — also `beta` / `alpha` |
+| `track` | `production` | destination — also `beta` / `alpha`, though closed testing has its own workflow above |
 | `from_track` | `internal` | source track holding the build being promoted |
 | `rollout` | `0.1` | fraction of users; `1.0` is everyone |
 | `version_code` | *(blank)* | which build to promote; blank asks Play what is on `from_track` |

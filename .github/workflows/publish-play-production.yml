@@ -133,8 +133,20 @@ jobs:
       # promotion — publish-play.yml uploads no metadata at all, so this is the first and only place
       # the notes for this versionCode reach Play. Whether the *descriptions and screenshots* go up
       # is the update_listing input, applied at the supply step below.
+      #
+      # --strict only when update_listing is on, and the split is the point. supply saves a listing
+      # for every locale directory it is given, whichever fields are present, so an incomplete locale on
+      # the listing path reaches Play as an empty one and the whole edit is refused. Refusing it here is
+      # the only guard. On the notes-only path supply skips listings entirely, and a release must not
+      # stop over descriptions it is not uploading - so there the script only warns.
       - name: Render the listing metadata
-        run: python3 scripts/play-metadata.py --out fastlane/metadata/android --version-code '${{ steps.version.outputs.code }}'
+        run: |
+          set -euo pipefail
+          args=(--out fastlane/metadata/android --version-code '${{ steps.version.outputs.code }}')
+          if [ '${{ inputs.update_listing }}' = 'true' ]; then
+            args+=(--strict)
+          fi
+          python3 scripts/play-metadata.py "${args[@]}"
 
       - name: Promote to Play
         env:

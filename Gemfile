@@ -1,4 +1,4 @@
-# fastlane, for one job only: the manual production release.
+# fastlane, for the two manual promotion jobs: the production release and closed testing.
 #
 # Ruby is deliberately confined here. Everything else in this repository that talks to Play is
 # Python — the three `aab-*.py` artifact checks, the metadata generator, the release-note renderer —
