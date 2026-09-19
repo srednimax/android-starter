@@ -6,6 +6,12 @@
 - **Vocabulary:** [`CONTEXT.md`](CONTEXT.md) — use these terms in code and UI.
 - **Decisions and why:** [`docs/adr/`](docs/adr/) — read before changing anything they cover.
 - **What's still open:** [`docs/DOD.md`](docs/DOD.md) — the live checklist. **Read this one first.**
+- **The arc, in phases:** [`docs/PLAN.md`](docs/PLAN.md) — sequence only; a phase being built gets
+  its own `docs/phase-N.md`. Read the phase you're in, not the file.
+- **How to work here:** invoke the `lean-loop` skill at the start of every session and keep it
+  active. This repo is written before it is built — plans, ADRs and phase documents are long on
+  purpose — so the waste is re-reading what is already in the transcript and testing code whose
+  shape has not settled.
 - **Commits & releasing:** [`docs/RELEASING.md`](docs/RELEASING.md). Commit subjects **must** be
   [Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, `feat!:`, `docs:`, …)
   — a `commit-msg` hook rejects anything else, and release-please derives the version and
@@ -19,7 +25,13 @@ Don't restate ADR reasoning here; link to it. This file is loaded every session 
 JavaScript/TypeScript, new to Kotlin. Comment code where a Kotlin/Compose idiom has no direct JS
 analogue — `Flow` vs promises/observables, `suspend` vs `async`, `remember`/`derivedStateOf` vs
 `useMemo`, data class `copy()` vs object spread, sealed classes vs discriminated unions. Explain the
-*why*, don't restate the line. Prefer explicit and readable over clever.">
+*why*, don't restate the line. Prefer explicit and readable over clever.
+
+The Android **platform** is the other half of the gap and has no JS analogue at all: the manifest as
+a declaration the OS reads before any code runs, permission models that differ per API level, process
+death, and vendor ROMs overriding documented behaviour. Say when a constraint comes from the platform
+rather than from this codebase — that is the difference between "we chose this" and "Android will not
+let us do otherwise".">
 
 ## Stack
 
