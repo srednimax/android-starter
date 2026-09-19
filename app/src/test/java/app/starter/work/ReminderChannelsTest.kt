@@ -39,14 +39,13 @@ class ReminderChannelsTest {
     }
 
     @Test
-    fun `there are exactly five channels, and they are the five this release has behind them`() {
+    fun `there is exactly one channel, the one the template has behind it`() {
         // One per thing that posts, and no more. A channel is the owner's only per-kind control:
-        // muting a daily watch nag must not mute an annual vaccination, deciding a monthly "make a
-        // backup" prompt is not for you must not cost either of the other two, and muting doses must
-        // not follow from any of the three. `backup` arrived in 4e, `doses` in 5a and `events` in
-        // 10e — care is a job the app is asking for and an event is a day the owner asked to be
-        // reminded of, which is a distinction the per-channel switch is the only place to act on.
-        // This test is what makes an addition a deliberate act rather than a passing convenience.
+        // muting a daily nag must not mute an annual reminder, and deciding a "make a backup"
+        // prompt is not for you must not cost either of the others. So a second kind of
+        // notification gets its own channel — and a channel created at the wrong importance can
+        // never be raised again, only lowered by the user. This test is what makes an addition a
+        // deliberate act rather than a passing convenience: add the id here in the same commit.
         assertEquals(
             setOf("reminders"),
             ReminderChannel.entries.map { it.id }.toSet(),
