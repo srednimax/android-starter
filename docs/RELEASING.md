@@ -93,6 +93,19 @@ The gate is invisible on ordinary branches — `versionName` is still the last r
 notes already match. It fails on **release-please's PR**, which is the one moment the two are allowed
 to disagree and the last moment it is free to fix.
 
+**Where the notes get written, and where they must not be.** The obvious place is release-please's
+own PR branch, because that is where `versionName` already carries the new number. It is the wrong
+place: the action **force-pushes that branch** every time anything lands on `main`, so a note
+committed there survives only until the next merge and its loss is silent. Write them on an ordinary
+branch instead, before the release PR merges. **The gate allows notes to run ahead of `versionName`
+and fails only when they fall behind**, which is what makes that possible — and behind is the
+direction that actually shipped 1.9.0 describing 1.8.0, so that half stays fatal.
+
+Nothing can ship the wrong text in the window between the two. `publish-play.yml` uploads the bundle
+with **no release notes at all**, and `publish-play-production.yml` — the only workflow that runs
+`play-metadata.py` — is manual, held by the `production` environment's reviewer, and points at a
+released tag where `versionName` and the newest heading agree again.
+
 **When nothing owner-visible changed, satisfying it is a rename, not a rewrite.** Move the heading to
 the new version and say why the bodies stand unchanged; 1.8.0 is the worked example. The gate reads
 the heading, so "these notes still hold" stays a decision someone made rather than the default.
@@ -100,10 +113,34 @@ the heading, so "these notes still hold" stays a decision someone made rather th
 ```bash
 python3 scripts/notes-gate.py            # the gate itself
 python3 scripts/notes-gate.py --report   # what does this branch owe?
+python3 scripts/notes-gate.py --pending  # will the release this branch feeds have notes?
 ```
 
 It also checks what the notes must satisfy to be usable at all: a note for every locale the AAB
 carries, and every one inside Play's 500 characters.
+
+**`--pending` moves the failure from the release PR to the branch that caused it.** Left alone, the
+gate fails once per release, on release-please's PR, and the fix is a separate docs PR every time.
+`--pending` predicts the number instead: the manifest's version on `origin/main`, bumped by the
+conventional commits since the last release plus this branch's own, read the way release-please reads
+them — including the pre-1.0 options in `release-please-config.json`. Replayed against nine releases
+of an app built from this template, it proposed the version release-please actually cut every time.
+It exits **2** when that version has no `### x.y.z` on the branch or on `main`, and 0 when no release
+is pending — a docs-only branch never owes notes.
+
+**Claude Code runs it before every `git push` it makes — once `bootstrap.py` has installed the hook.**
+`.claude/settings.json` gets a `PreToolUse` hook filtered to `Bash(git push*)`, so no other command
+starts it. Exit 2 blocks the push and hands Claude the message, so the notes are written on the branch
+before it leaves; any other failure only warns, because a broken check must not stop every push. It
+fetches `origin/main` first, since a stale `main` would miss a `feat:` merged elsewhere.
+⚠ **The template carries no hook, on purpose, and that is why it is a per-repo step.** The template
+never releases (below), so its own `feat:` commits would make every push to it owe notes for a version
+that will never ship. `bootstrap.py` writes the hook as part of turning the template into an app.
+⚠ Claude Code reads project hooks only from the directory it was **launched in**, after that folder is
+trusted. Started from a parent directory, it never loads them and nothing says so.
+⚠ It checks that the heading **exists**, not that it describes everything: a second `feat:` branch
+toward an already-noted version passes, so adding its line is still a judgement. Pushes from your own
+terminal never run it — `.githooks/pre-push` is a different, advisory hook.
 
 ## Checking the artifact before it reaches Play
 
