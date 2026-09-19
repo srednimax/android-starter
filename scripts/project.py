@@ -41,7 +41,7 @@ def _from_build(key: str) -> str:
     return match.group(1)
 
 
-# The Kotlin package root — `app.starter`. Source lives at app/src/main/java/<this, as dirs>/.
+# The Kotlin package root, e.g. `app.myapp`. Source lives at app/src/main/java/<this, as dirs>/.
 NAMESPACE = _from_build("namespace")
 
 # The install identity — what `adb` and the Play Console call the app. Deliberately allowed to
@@ -57,9 +57,38 @@ DEBUG_APPLICATION_ID = f"{APPLICATION_ID}.debug"
 # `app_name` in res/values/strings.xml; this is only for things outside the APK.
 APP_NAME = "Starter"
 
+
+def _debug_app_name() -> str:
+    """What the **debug** build's launcher label actually says.
+
+    Parsed rather than derived, and the reason is a bug that cost an app built from this template a
+    device session: the debug source set overrides `app_name` with "<name> debug", and
+    `device-gate.py` looked for `f"{APP_NAME} Debug"` — a capital D the app never had. Every OEM
+    settings screen lists an app under this string, so a scrape aimed at the wrong one finds no row,
+    cannot set the toggle, and reports *not allowed* for an app that may well be allowed. A wrong
+    answer that looks like a reading is worse than an error.
+    """
+    path = ROOT / "app/src/debug/res/values/strings.xml"
+    if path.is_file():
+        match = re.search(r'<string name="app_name"[^>]*>([^<]+)</string>', path.read_text(encoding="utf-8"))
+        if match:
+            return match.group(1)
+    return APP_NAME
+
+
+# The label the launcher, and every OEM permission screen, shows for the installed debug build.
+DEBUG_APP_NAME = _debug_app_name()
+
 # --- Room -------------------------------------------------------------------------------------
 # The filename passed to Room.databaseBuilder, and so what lands in /data/data/<pkg>/databases/.
 DATABASE_FILE = "app.db"
+
+# **Whether this app has a database at all**, read off the source rather than declared. An app that
+# stores settings and not records is a legitimate shape — the first app built from this template
+# deleted Room on day one — and every script that pulls, patches or gates the database asks this
+# first, so deleting `data/AppDatabase.kt` is enough to retire them rather than a hunt through
+# `scripts/` for the ones that now crash. The day a feature adds a table back, they come back with it.
+HAS_DATABASE = (ROOT / "app/src/main/java" / NAMESPACE.replace(".", "/") / "data/AppDatabase.kt").is_file()
 
 # The schema constants `schema-gate.py` reads. Renaming these in Kotlin means renaming them here.
 SCHEMA_VERSION_CONST = "APP_SCHEMA_VERSION"
@@ -84,7 +113,9 @@ if __name__ == "__main__":
         ("NAMESPACE", NAMESPACE),
         ("APPLICATION_ID", APPLICATION_ID),
         ("DEBUG_APPLICATION_ID", DEBUG_APPLICATION_ID),
-        ("DATABASE_FILE", DATABASE_FILE),
+        ("DEBUG_APP_NAME", DEBUG_APP_NAME),
+        ("HAS_DATABASE", "yes" if HAS_DATABASE else "no"),
+        ("DATABASE_FILE", DATABASE_FILE if HAS_DATABASE else "(none — no data/AppDatabase.kt)"),
         ("MAIN_ACTIVITY", MAIN_ACTIVITY),
     ]:
         print(f"{name:22} {value}")

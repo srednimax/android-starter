@@ -20,8 +20,12 @@ local.properties
 # Context handoff note (written by /handoff, resumed after /clear)
 /HANDOFF.md
 
-# Signing keys. The upload keystore lives outside the repo entirely (ADR-0009); this is a
-# second line of defence in case one is ever created in the working tree.
+# Overnight device captures (scripts/doze-capture.sh). Tens of megabytes of logcat per run;
+# copy the numbers worth keeping into a written record by hand.
+/doze-*/
+
+# Signing keys. The upload keystore lives outside the repo entirely (docs/RELEASING.md, *The
+# upload key*); this is a second line of defence in case one is ever created in the working tree.
 *.jks
 *.keystore
 

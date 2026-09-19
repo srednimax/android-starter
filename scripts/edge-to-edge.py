@@ -49,8 +49,42 @@ from xml.etree import ElementTree
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import project  # noqa: E402  — the path insert above has to come first
 
+# The debug install by default: it is the scratch copy, the one a wipe costs nothing, and the one
+# with the debug-only seeding surface. [select_build] is how a run says otherwise.
 PACKAGE = project.DEBUG_APPLICATION_ID
 ACTIVITY = project.MAIN_ACTIVITY
+
+# Whether [wipe] may `pm clear` the install this run drives. False on the shipped install, which is
+# somebody's real app with no `run-as` to back anything up first. See [select_build].
+WIPEABLE = True
+
+
+def select_build(build: str) -> None:
+    """Point the driver at the debug install (`debug`) or at the shipped one (`release`).
+
+    **`release` is the build a store screenshot has to come from**, and not for tidiness: the
+    developer-only Settings section lives in `app/src/debug/`, so on the shipped build
+    `DebugSettings()` is a no-op and the section is *absent* rather than hidden. A set shot off
+    `debug` photographs *Seed sample data* the moment any scene scrolls Settings — which is what an
+    app built from this template's first trial run did.
+
+    It also takes the wipe away, which is the dangerous half. `debug` is a scratch install nobody
+    mourns; the release id is the app on the phone's home screen — installed from Play, or with
+    `bundletool` from a local `bundleRelease` — and a capture run reseeds, that is `pm clear`s, once
+    per cell. So [WIPEABLE] goes false here and [wipe] refuses, rather than leaving it to whoever
+    remembers a flag at 2am.
+
+    ⚠ **Pointed at the wrong install, nothing fails**: the walk photographs a real app that answers
+    every needle, just not the one the run was for. Both can be on the phone at once, which is the
+    normal state (`applicationIdSuffix`), so the flag is the only thing that says which.
+    """
+    global PACKAGE, ACTIVITY, WIPEABLE
+    if build not in ("debug", "release"):
+        raise SystemExit(f"unknown build {build!r}: expected 'debug' or 'release'")
+    PACKAGE = project.DEBUG_APPLICATION_ID if build == "debug" else project.APPLICATION_ID
+    ACTIVITY = f"{PACKAGE}/{project.NAMESPACE}.MainActivity"
+    WIPEABLE = build == "debug"
+
 
 # The three inset types a screen can be wrongly drawn under. `displayCutout` is listed separately
 # from `statusBars` on purpose: in portrait they coincide, and in landscape they do not — which is
@@ -100,8 +134,9 @@ class Config:
 
 
 CONFIGS = [
-    # Portrait + gesture is the cell 1.0's Play screenshots already evidence. It is captured
-    # anyway, because the screens 4a-4e added have no prior evidence in any cell.
+    # Four cells: two navigation modes, two rotations. If the app locks its activity to portrait,
+    # delete the two landscape cells here and in ci.yml's matrix — see [repin_rotation] for why
+    # keeping them is worse than dropping them.
     Config("portrait-gesture", 0, "gesture"),
     Config("portrait-threebutton", 0, "threebutton"),
     Config("landscape-gesture", 1, "gesture"),
@@ -306,11 +341,53 @@ def apply_config(config: Config) -> None:
     settle(3.0)
 
 
+def repin_rotation() -> None:
+    """Put back the rotation the last force-stop cost us.
+
+    **Anything that takes the foreground away from this app can unpin the rotation, and the platform
+    does it silently.** `user_rotation` only turns a display whose top activity permits turning, so
+    the moment the app dies the launcher is in front — and launchers are portrait-locked — the window
+    manager settles on ROTATION_0 and writes `user_rotation` back to `0`. Nothing reports this: the
+    cell keeps its name, the screenshots keep coming, and [read_insets] keeps telling the truth about
+    a rotation that is no longer the one being tested. An app built from this template found, walking
+    a new scene, that **every landscape cell had been a second portrait cell, for every scene, since
+    the harness was written**: a `force-stop` alone took `user_rotation` from 1 to 0 within three
+    seconds on an API 33 emulator. The tell is a report whose header insets are landscape and whose
+    scene insets are portrait, and portrait-sized PNGs in a directory called `landscape-*`.
+
+    So this is not only a wipe's problem, which is how it was first written. Every caller that
+    force-stops — [wipe] and [relaunch] here, and any step you add that does — is a place a
+    landscape cell can quietly become a second portrait one, and each calls this afterwards.
+
+    **Read before write, because the write is not the cost — the settle is.** A portrait cell never
+    loses anything and would otherwise pay 1.5s per scene to be told so; the round-trip that asks is
+    an order of magnitude cheaper. `accelerometer_rotation` is read in the same trip rather than
+    written blind: on a device that *has* a sensor, leaving it enabled hands the display back to the
+    hand holding the phone, which is the same defect by a slower road.
+
+    ⚠ **An app that locks its activity to portrait makes the landscape cells meaningless**, not
+    merely redundant: every scene starts from the locked activity, so they capture portrait under a
+    landscape name. Drop them from [CONFIGS] and from the CI matrix in the same commit as the lock
+    (and add the lock to `aab-permissions.py`'s EXPECTED_ORIENTATION).
+    """
+    if _PINNED is None:
+        return
+    live = shell(
+        "settings get system user_rotation; settings get system accelerometer_rotation"
+    ).split()
+    if live == [str(_PINNED.rotation), "0"]:
+        return
+    shell("settings put system accelerometer_rotation 0")
+    shell(f"settings put system user_rotation {_PINNED.rotation}")
+    settle(1.5)
+
+
 def restore_device() -> None:
     # Gesture is the phone's own default; below API 29 there is no such thing to go back to.
     set_nav_mode("gesture" if api_level() >= GESTURE_MIN_API else "threebutton")
     shell("settings put system accelerometer_rotation 1")
     set_dnd(False)
+    set_demo_status_bar(False)
 
 
 def set_dnd(on: bool) -> None:
@@ -335,6 +412,61 @@ def set_dnd(on: bool) -> None:
         # Tolerated rather than fatal: on an emulator with no heads-up banner to suppress this is
         # cosmetic, and losing a whole matrix to a missing device command would not be.
         print("  -- note: `cmd notification set_dnd` unavailable, continuing without it")
+    settle(0.5)
+
+
+# What `sysui_demo_allowed` read before a run turned demo mode on, so [set_demo_status_bar] can put
+# back exactly that. None means "not touched this run".
+_DEMO_ALLOWED: "str | None" = None
+
+
+def set_demo_status_bar(on: bool) -> None:
+    """Empty the status bar of this phone's own state for the length of a capture run.
+
+    **The status bar is in every screenshot, and by default it is a photograph of somebody's phone**:
+    notification icons, a network-speed readout, bluetooth, Do Not Disturb, a real battery
+    percentage — none of which is the app, all of which ships to a store listing in every language.
+
+    SystemUI's demo mode is the platform's own answer: a broadcast that tells the status bar to draw a
+    fixed set of icons instead of the real ones. It is gated behind a global that is off by default,
+    so this reads that global before writing it and [restore_device] puts back what it found.
+
+    **HyperOS honours some of it and silently ignores the rest** (measured by an app built from this
+    template, 2026-09): hiding notifications and pinning the battery level work; the charging bolt
+    stays (and the cable has to be in for adb); the clock ignores the requested time but stops being
+    live, which is what a multi-locale set wants anyway; and the signal and wifi icons disappear
+    rather than pinning to full. Fewer icons than asked for is the safe direction for a listing — do
+    not "fix" the ignored rows another way: the point is emptiness, not a fake phone.
+
+    Like [set_dnd] this is **phone-wide**, so every caller's `off` belongs in a `finally` — and
+    unlike Do Not Disturb, a demo status bar left behind looks like a broken phone.
+    """
+    global _DEMO_ALLOWED
+    if on:
+        _DEMO_ALLOWED = shell("settings get global sysui_demo_allowed").strip()
+        shell("settings put global sysui_demo_allowed 1")
+        if not shell_ok("am broadcast -a com.android.systemui.demo -e command enter"):
+            # Tolerated rather than fatal, on [set_dnd]'s reasoning: an emulator or a ROM without
+            # demo mode should cost the shots their clean status bar, not the whole matrix.
+            print("  -- note: SystemUI demo mode unavailable, status bar will show real state")
+            return
+        for command in (
+            "-e command notifications -e visible false",
+            "-e command battery -e level 100 -e plugged false",
+        ):
+            shell(f"am broadcast -a com.android.systemui.demo {command}")
+        settle(1.0)
+        return
+    # Exit unconditionally, even if `enter` was never reached: a previous crashed run is exactly the
+    # state this has to be able to clear, and the broadcast is harmless when nothing is in demo mode.
+    shell("am broadcast -a com.android.systemui.demo -e command exit")
+    if _DEMO_ALLOWED in (None, "null", ""):
+        # It was unset, so delete rather than write a 0 — `put` would leave a row behind that the
+        # phone never had.
+        shell("settings delete global sysui_demo_allowed")
+    else:
+        shell(f"settings put global sysui_demo_allowed {_DEMO_ALLOWED}")
+    _DEMO_ALLOWED = None
     settle(0.5)
 
 
@@ -397,9 +529,26 @@ class Rect:
         return [self.left, self.top, self.right, self.bottom]
 
 
+# Two spellings, and the older one matters: `id=` is API 34+, and below it the line reads
+# `InsetsSource type=ITYPE_STATUS_BAR …`. With only the modern pattern the driver reads *no insets at
+# all* at an API 33 floor — and a cell with no insets reports every scene clean, because nothing was
+# checked. An app built from this template found that on its first run at its minSdk.
 INSET_RE = re.compile(
-    r"InsetsSource id=\w+ type=(\w+) frame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] visible=(\w+)"
+    r"InsetsSource (?:id=\w+ )?type=(\w+) frame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] visible=(\w+)"
 )
+
+# The pre-34 names for the three types this driver cares about. The cutout has one source per edge
+# down there and one type up here, which is why several map to the same name — [read_insets] already
+# keeps the largest of any repeated type.
+LEGACY_INSET_TYPES = {
+    "ITYPE_STATUS_BAR": "statusBars",
+    "ITYPE_NAVIGATION_BAR": "navigationBars",
+    "ITYPE_EXTRA_NAVIGATION_BAR": "navigationBars",
+    "ITYPE_TOP_DISPLAY_CUTOUT": "displayCutout",
+    "ITYPE_BOTTOM_DISPLAY_CUTOUT": "displayCutout",
+    "ITYPE_LEFT_DISPLAY_CUTOUT": "displayCutout",
+    "ITYPE_RIGHT_DISPLAY_CUTOUT": "displayCutout",
+}
 
 
 def read_insets() -> dict[str, Rect]:
@@ -413,6 +562,7 @@ def read_insets() -> dict[str, Rect]:
     found: dict[str, Rect] = {}
     for match in INSET_RE.finditer(dump):
         kind, left, top, right, bottom, visible = match.groups()
+        kind = LEGACY_INSET_TYPES.get(kind, kind)
         if kind not in INSET_TYPES or visible != "true":
             continue
         rect = Rect(int(left), int(top), int(right), int(bottom))
@@ -474,11 +624,9 @@ def dump_ui() -> list[Node]:
         # **Unescape, because this reads XML with a regex and the labels are English prose.** The
         # dump writes `Backup &amp; restore`, so a needle spelled with a real ampersand —
         # `"Backup & restore"` — matches nothing at all, and a label like that tends to sit at the
-        # head of many scenes. Found 2026-08-16 on the first English cell run since the needles were
-        # lengthened on 2026-08-14; **the 146/146 Polish run could not see it**, because *"Opieka i
-        # leki"* and *"Kopia zapasowa i przywracanie"* carry no ampersand. Third defect this phase that is
-        # unreachable in one locale and fatal in the other, and the first one that English is the
-        # broken half of.
+        # head of many scenes. **A fully green Polish run could not see it**, because the Polish
+        # labels carried no ampersand — a defect unreachable in one locale and fatal in the other,
+        # which is why a locale run is not evidence about English, or the reverse.
         attrs = {name: html.unescape(value) for name, value in ATTR_RE.findall(match.group(1))}
         bounds_match = BOUNDS_RE.search(attrs.get("bounds", ""))
         if not bounds_match:
@@ -588,10 +736,10 @@ def relaunch() -> None:
     **`force-stop` is not enough on its own, and the gap cost a whole cell.** It kills the process but
     leaves the task record, so Android may restore the saved-instance bundle on the next `am start` —
     the app comes back on whatever screen it was last on rather than at Home. One stray tap is then
-    permanent: on 2026-08-12 a dose notification posted mid-run (`importance=4`, two actions, drawn
-    exactly where the driver was about to tap), the tap landed on the banner instead of the app, and
-    every scene afterwards relaunched into the record-dose screen and failed on a needle that was
-    never wrong. `-S` force-stops, and `0x10008000` is `FLAG_ACTIVITY_CLEAR_TASK | NEW_TASK`, which
+    permanent: in the app this template came from, a reminder notification posted mid-run, drawn
+    exactly where the driver was about to tap; the tap landed on the banner instead of the app, and
+    every scene afterwards relaunched into the screen the notification opened and failed on a needle
+    that was never wrong. `-S` force-stops, and `0x10008000` is `FLAG_ACTIVITY_CLEAR_TASK | NEW_TASK`, which
     drops the record the restore reads from. **A scene must not be able to inherit the last one's
     screen** — that is what makes 61 scenes independent rather than a sequence.
 
@@ -602,6 +750,7 @@ def relaunch() -> None:
     """
     shell(f"am start -S -n {ACTIVITY} -f 0x10008000")
     wait_for_app()
+    repin_rotation()  # `-S` is a force-stop, and a force-stop costs the rotation — see [repin_rotation]
 
 
 # The two needles the isolation step is built on, both from the shell rather than from any screen.
@@ -670,11 +819,11 @@ def return_to_home() -> None:
 
     **What it found, which is not what it was written to fix.** It was written on the reading that
     `am start -S -f 0x10008000` does not clear a restored Nav3 back stack. Checked directly — walk
-    into a detail screen, relaunch; switch tab, relaunch — and **both came back on the root**. So the flags do their job on this phone, and the 2026-08-12 cell
-    that relaunched into the record-dose screen over and over is better explained by the banner than
-    by the stack: the missed 20:00 dose re-arms at process start (ADR-0025's self-heal), fires
-    immediately because it is already past, and posts a fresh heads-up over *every* scene rather
-    than poisoning one. [set_dnd] is the fix for that, and this is the check that says so — it
+    into a detail screen, relaunch; switch tab, relaunch — and **both came back on the root**. So
+    the flags do their job, and a cell that relaunches into the same wrong screen over and over is
+    better explained by a notification than by the stack: a reminder that re-arms at process start
+    and is already past fires immediately, posting a fresh heads-up over *every* scene rather than
+    poisoning one. [set_dnd] is the fix for that, and this is the check that says so — it
     prints when it has to correct anything, so a run that never prints is evidence about the
     relaunch and not merely the absence of a complaint.
 
@@ -718,11 +867,10 @@ def tap(needle: str, *, optional: bool = False, text_only: bool = False) -> None
     # waiting to be told "no" is most of the run time of the matrix.
     # **Scroll while the screen is still moving, rather than a fixed number of times.** A landscape
     # swipe covers 70%→32% of 1220px — about 464px, against roughly 1030px of a portrait screen — so
-    # a budget of four tries reaches ~1856px sideways where it reaches ~4120px upright. The Care
-    # screen is several thousand pixels long in landscape (it shows two and a half rows at a time),
-    # which is how `visit-editor`, `weight-entry` and `home-crowded-all` came back unreachable on
-    # 2026-08-16 for controls that are plainly reachable: `care-bottom` scrolls clean past them to
-    # the banner at the end. **A fixed budget is a portrait-shaped constant**, the same shape of bug
+    # a budget of four tries reaches ~1856px sideways where it reaches ~4120px upright. A long
+    # screen can be several thousand pixels in landscape, which is how three scenes once came back
+    # unreachable for controls that were plainly reachable, while a scene aimed at the bottom of the
+    # same screen scrolled clean past them. **A fixed budget is a portrait-shaped constant**, the same shape of bug
     # as the rotation a wipe used to cost, and it fails only where the viewport is short.
     #
     # The signature check is what keeps this from being slower: a screen that cannot scroll stops
@@ -760,7 +908,7 @@ def tap(needle: str, *, optional: bool = False, text_only: bool = False) -> None
     # screen provably on and focused, while `input keyevent` and `input swipe` kept working. Proved by
     # A/B on one screen at one coordinate — bare `tap` never moved the selection, `touchscreen tap`
     # moved it every time. `input` picks a default source when none is given, and that inference is
-    # what HyperOS stopped honouring; naming the source sidesteps the guess (6c, 2026-08-06).
+    # what HyperOS stopped honouring; naming the source sidesteps the guess.
     #
     # The retry below stays regardless: exit status still proves nothing, so the screen is asked
     # instead — tap, look, tap again if nothing moved. Without it the first tap after a cold start
@@ -775,8 +923,8 @@ def tap(needle: str, *, optional: bool = False, text_only: bool = False) -> None
             if moved:
                 return
             continue
-        # **"The screen moved" is not "the app is on that tab".** It was the whole test until 9g,
-        # and a sheet opening over Home satisfies it perfectly. Ask the navigation bar instead.
+        # **"The screen moved" is not "the app is on that tab".** It was once the whole test, and a
+        # sheet opening over Home satisfies it perfectly. Ask the navigation bar instead.
         if showing_tab(after, needle):
             return
         if moved:
@@ -802,7 +950,7 @@ def screen_size() -> tuple[int, int]:
     `wm size` gives the *physical* size and stays portrait-first through every rotation, so the
     orientation has to come from somewhere else — and `user_rotation` is the wrong somewhere. That
     key records what the display was last **pinned** to, and it means nothing while
-    `accelerometer_rotation` is 1: on 2026-08-20 it read `1` against a live 1220x2712 portrait
+    `accelerometer_rotation` is 1: it has been read as `1` against a live 1220x2712 portrait
     screen, left over from an earlier run's pinning that `--restore` had handed back.
 
     [swipe_up] built a 2712-wide swipe out of it and sent every gesture to x=1356, off the right
@@ -883,7 +1031,7 @@ def swipe_to_end() -> None:
     what edge-to-edge looks like. The defect is a list whose last row still sits under the bar once
     it has nowhere left to go, and only the end of the scroll can tell the two apart.
     """
-    # Each swipe now covers less of the screen, and the observation timeline holds a year of rows,
+    # Each swipe now covers less of the screen, and a long list can hold a year of rows,
     # so the cap is generous: stopping early would report the middle of a list as its end.
     previous = ""
     # Dumped once up front and then reused: the signature dump each round is also the one the next
@@ -938,6 +1086,14 @@ def wipe() -> None:
     against seeded sample data and a wipe in the middle of it would quietly capture empty screens
     under populated names.
     """
+    # **The shipped install is not ours to clear.** Raising here rather than checking at every call
+    # site is deliberate: `wipe` has several routes into it — the `empty` suite's own first step,
+    # [reset_to_seeded], [ensure_seed] — and a guard on two of them is a guard on none.
+    if not WIPEABLE:
+        raise StepFailed(
+            f"refusing to `pm clear {PACKAGE}`: that is the shipped install, and this would wipe "
+            "data nothing here can restore. Run with --no-reseed, or point the driver at debug",
+        )
     global _SEEDED
     _SEEDED = None
     shell(f"pm clear {PACKAGE}")
@@ -950,25 +1106,18 @@ def wipe() -> None:
     wait_for_app()
     # Re-pin the rotation the wipe just cost us. Only the rotation: the navigation mode is a global
     # and survives, and re-writing it would buy another 3s settle per wiping scene for nothing.
-    # Verified by the failure it exists to stop — `mRotation=ROTATION_0` and 1220x2712 PNGs in a
-    # cell named `landscape-gesture`.
-    if _PINNED is not None:
-        shell("settings put system accelerometer_rotation 0")
-        shell(f"settings put system user_rotation {_PINNED.rotation}")
-        settle(1.5)
+    repin_rotation()
 
 
 def reset_to_seeded() -> None:
     """Wipe, skip the wizard, and seed the debug sample data — a known state, not just a clean one.
 
-    The inverse of [wipe], and the step this file has been missing: the `empty` suite ends with the
-    install wiped, so a matrix run leaves the phone with no sample data and no media directories at
-    all. That is exactly what DOD §1 recorded after the 5 Aug run, where the wipe took the armed
-    medication course with it and nothing put it back.
+    The inverse of [wipe]: the `empty` suite ends with the install wiped, so without this a matrix
+    run leaves the phone with no sample data and no media directories at all.
 
-    It matters more than tidiness for repeat runs. `seedWatches` back-dates `startedAt`, so a fresh
-    seed restores the *unanswered* watch-expiry prompt — and answering that prompt is permanent, so
-    without this a second capture cell would find it already gone and quietly shoot the wrong screen.
+    It matters more than tidiness for repeat runs. Anything the seed stages for a scene to answer — a
+    prompt, a pending state — is consumed the first time a scene answers it, so without a reseed a
+    second capture cell would find it already gone and quietly shoot the wrong screen.
     """
     wipe()
     for label in SEED_WALK:
@@ -981,12 +1130,12 @@ def reset_to_seeded() -> None:
     # would die with it. Every caller relaunches before its next screenshot, so the app picks the
     # permission up cleanly.
     #
-    # `pm clear` revokes POST_NOTIFICATIONS, and a denied notification permission is *visible*: the
-    # Care screen grows a "notifications are off" banner whose button is labelled `action_open` —
-    # the same "Open" the medication-course row uses. `tap("Open")` then matches the banner first
-    # and launches HyperOS's notification settings, so `medication-course` screenshotted the system
-    # Settings app and `record-dose` failed with an empty node list, the foreground no longer being
-    # this package. Granting it back is also the honest state: a seeded install stands in for an app
+    # `pm clear` revokes POST_NOTIFICATIONS, and a denied notification permission is *visible*: a
+    # screen that explains it grows a "notifications are off" banner, and its button's label can
+    # collide with a needle a later scene taps — which then launches the system's notification
+    # settings, so the next scene photographs the Settings app and the one after fails with an empty
+    # node list, the foreground no longer being this package. Granting it back is also the honest
+    # state: a seeded install stands in for an app
     # in use, not for one whose permission was just refused. The `empty` suite is the deliberate
     # exception and keeps the denied state, because there it is the truth of a first run.
     if api_level() >= POST_NOTIFICATIONS_MIN_API:
@@ -1154,13 +1303,14 @@ class Scene:
     # "full" runs against seeded sample data; "empty" runs against a wiped install, which is the
     # only way to see the first-run wizard and the only honest way to see an empty list.
     suite: str = "full"
-    # The sample data seeds a watch that has already run out, so 4d's expiry prompt is waiting on
-    # top of every launch until someone answers it — and answering it is permanent. So the prompt
-    # is captured in all four configurations first and dismissed out of the way everywhere else.
-    keeps_watch_prompt: bool = False
+    # For an app whose sample data stages a **one-shot prompt** — a dialog waiting on top of every
+    # launch until someone answers it, where answering is permanent. A scene that photographs the
+    # prompt sets this: it runs first in each cell, is never backed out of or retried, and every
+    # other scene dismisses the prompt with [PROMPT_DISMISS] before walking. The template stages none.
+    keeps_seeded_prompt: bool = False
     # The seed this scene needs, "" being the plain sample data. Anything else is a variant name the
     # debug build's SeedVariantReceiver knows, added *on top of* the sample data — the default seed
-    # is never edited, because 61 scenes and the listing screenshots rest on it. Scenes are grouped
+    # is never edited, because every scene and the listing screenshots rest on it. Scenes are grouped
     # by this, so a variant costs one reseed per cell rather than one per scene.
     seed: str = ""
 
@@ -1250,9 +1400,9 @@ DEBUG_RES_DIR = Path(__file__).resolve().parent.parent / "app" / "src" / "debug"
 # here: [scene_needles] can only see what is in [SCENES], so a literal buried in a function is one a
 # locale run does not translate — and the first Polish run failed on exactly that, in
 # [reset_to_seeded], which is the step every cell starts with.
-# A dialog that greets every launch and must be dismissed before a scene can be walked. The
-# template has none; leave it as None until yours does, and see `keeps_watch_prompt`.
-WATCH_CLOSE: "str | None" = None
+# The label that dismisses a seeded one-shot prompt before a scene can be walked. The template
+# stages none; leave it as None until yours does, and see `Scene.keeps_seeded_prompt`.
+PROMPT_DISMISS: "str | None" = None
 
 # The walk from a wiped install to the seeded fixture: into Settings and through the debug-only
 # sample-data block at the end of it. Extend this as your app grows a first-run wizard in front of it.
@@ -1320,18 +1470,18 @@ def load_strings(locale: str | None) -> dict[str, str]:
 
 def scene_needles() -> set[str]:
     """Every string this driver will look for on screen, across all suites."""
-    needles = {TAB_BAR, HOME_TAB, WATCH_CLOSE, *SEED_WALK}
+    needles = {TAB_BAR, HOME_TAB, PROMPT_DISMISS, *SEED_WALK}
     for scene in SCENES:
         needles.update(arg for kind, arg in scene.steps if kind in ("tap", "tap?", "tap_text"))
     return needles
 
 
 def resolve_needles(locale: str) -> None:
-    """Translate the whole needle table **once, before the first tap** (ADR-0013).
+    """Translate the whole needle table **once, before the first tap** (ADR-0004).
 
     `--locale` has switched the app for a while; what has never worked is everything after it,
     because the needles are English string literals and a needle like `tap("Settings")` matches nothing
-    in Polish. ADR-0013 is what makes the fix small — every user-visible string is a resource in
+    in Polish. ADR-0004 is what makes the fix small — every user-visible string is a resource in
     every locale, and `PolishTranslationTest` keeps them level — so a needle can resolve *through
     the resource name*.
 
@@ -1366,7 +1516,7 @@ def resolve_needles(locale: str) -> None:
         if not names:
             names = [name for name, value in english.items() if folded in value.casefold()]
         # A resource the target locale does not carry is deliberately invariant — `app_name` is
-        # `translatable="false"` on purpose (ADR-0013) — so its English text is already the right
+        # `translatable="false"` on purpose (ADR-0004) — so its English text is already the right
         # needle and its absence is not a gap.
         candidates = {translated[name] for name in names if name in translated}
         if not candidates:
@@ -1468,12 +1618,12 @@ def reach_scene(scene: Scene) -> str | None:
     if _LIVE_NOTICE and scene.suite == "full":
         arm_live_notice()
     try:
-        if not scene.keeps_watch_prompt:
+        if not scene.keeps_seeded_prompt:
             # The prompt is hosted above the shell and so composes a beat after it; asking before
             # that is asking too early, and an optional tap does not wait around to be told no.
             settle(1.2)
-            if WATCH_CLOSE is not None:
-                tap(WATCH_CLOSE, optional=True)
+            if PROMPT_DISMISS is not None:
+                tap(PROMPT_DISMISS, optional=True)
             # After the prompt, never before: the prompt sits over whatever route was restored, and
             # closing it first means [return_to_home] reads the screen underneath rather than a
             # dialog's window.
@@ -1485,7 +1635,7 @@ def reach_scene(scene: Scene) -> str | None:
             # anything is captured. Both isolate themselves; only `full` inherits.
             if scene.suite == "full":
                 return_to_home()
-        # `keeps_watch_prompt` scenes get neither step, deliberately. **Back can be a destructive
+        # `keeps_seeded_prompt` scenes get neither step, deliberately. **Back can be a destructive
         # answer to a dialog** — where a dialog's dismiss handler is also its "no", a driver that
         # backed its way home would destroy the state the seed set up, for this cell and every cell
         # after it. Scenes that must not be backed out of run first in each cell, directly after the
@@ -1503,13 +1653,12 @@ def run_scene(scene: Scene, config: Config, out_dir: Path, retries: int = 0) -> 
     # starts from a known screen however the first one died — that recovery is what makes retrying a
     # missed tap different from retrying a broken screen.
     #
-    # `keeps_watch_prompt` scenes get no retries, and the rule is about correctness rather than
+    # `keeps_seeded_prompt` scenes get no retries, and the rule is about correctness rather than
     # caution. They skip both of those steps deliberately (see [reach_scene]), so attempt two would
     # start wherever attempt one stopped; worse, a half-finished attempt may already have answered
-    # the expiry prompt, which *deletes the row* — so the retry would shoot a stale screen and
-    # record it clean. That is the exact failure retrying is supposed to avoid, arriving by the
-    # other road. It costs three scenes: `watch-expiry` and both `mismatch` cells.
-    allowed = 1 + (0 if scene.keeps_watch_prompt else max(retries, 0))
+    # the prompt, which is permanent — so the retry would shoot a stale screen and record it clean.
+    # That is the exact failure retrying is supposed to avoid, arriving by the other road.
+    allowed = 1 + (0 if scene.keeps_seeded_prompt else max(retries, 0))
     for attempt in range(1, allowed + 1):
         error = reach_scene(scene)
         if error is None:
@@ -1568,12 +1717,17 @@ def main() -> int:
         "--live-notice",
         action="store_true",
         help=(
-            "re-arm an unanswered dose slot a minute in the past before every scene, so a reminder "
-            "banner tries to post over each one — the case DND exists for, without waiting for the "
-            "seed's own 20:00 dose. Debug build only; see [arm_live_notice]"
+            "arm a notification to post over every scene — the case DND exists for. Not wired in "
+            "the template: implement [arm_live_notice] for your app first. Debug build only"
         ),
     )
     parser.add_argument("--restore", action="store_true", help="undo the pinned rotation and nav mode")
+    parser.add_argument(
+        "--build",
+        choices=["debug", "release"],
+        default="debug",
+        help="which install to drive. 'release' is the shipped applicationId and is never wiped",
+    )
     parser.add_argument(
         "--retry-unreached",
         type=int,
@@ -1600,10 +1754,17 @@ def main() -> int:
     _LIVE_NOTICE = args.live_notice
 
     if args.restore:
-        set_locale(None)
+        # **Both installs, not the one `--build` happens to name.** `--restore` is "hand the phone
+        # back", and the person typing it is not thinking about which build the last run drove.
+        # Clearing only the selected one is how a locale stays pinned on the other, reported as
+        # handed back — which is what happened to the shipped install of an app built from this.
+        for build in ("debug", "release"):
+            select_build(build)
+            set_locale(None)
         restore_device()
-        print("rotation, navigation mode and Do Not Disturb handed back to the phone")
+        print("rotation, navigation mode, locale, Do Not Disturb and the status bar handed back to the phone")
         return 0
+    select_build(args.build)
 
     if not args.out:
         parser.error("--out is required unless --restore")
@@ -1641,6 +1802,12 @@ def main() -> int:
                 )
             return 0
         parser.error(f"no requested configuration is reachable on API {api_level()}")
+    # The `mismatch` suite patches a version byte into the database file. An app with no database
+    # has no such file and no refusal screen, so the suite can only fail — refused here by name
+    # rather than left to die on its first `run-as cp` (scripts/project.py, HAS_DATABASE).
+    if args.suite == "mismatch" and not project.HAS_DATABASE:
+        print("edge-to-edge: no database in this project, so there is no schema mismatch to fake.", file=sys.stderr)
+        return 2
     scenes = [scene for scene in SCENES if scene.suite == args.suite]
     if args.scene:
         wanted = set(args.scene.split(","))
@@ -1683,8 +1850,8 @@ def main() -> int:
         # Write whatever was reached, always. A full matrix is four cells over about two hours on a
         # phone somebody also owns, and writing the report only at the end means an interruption at
         # 95% produces *nothing* — the screenshots survive on disk but the inset findings, which are
-        # the point, do not. Twice on 2026-08-12 a run had to be stopped mid-cell and both times the
-        # completed cells were lost. `run_matrix` also writes after each config, so the file is
+        # the point, do not. Runs have had to be stopped mid-cell, and before this the completed cells
+        # were lost with them. `run_matrix` also writes after each config, so the file is
         # complete for every cell that finished.
         write_report(report_path, report)
     print(f"\nreport: {report_path}")
@@ -1724,9 +1891,8 @@ def write_report(report_path: Path, report: dict) -> None:
 
     **A partial re-shoot must not delete the run it is repairing.** The report was written per
     invocation, so re-running three scenes replaced a whole matrix with those three — which happened
-    to the Polish run on 2026-08-15 and was rebuilt from the directory by hand, with a note that it
-    was worth folding in here if it ever happened twice. It happened twice: the 2026-08-16 English
-    matrix left seven landscape cells to redo after a driver fix, against 285 that stood.
+    to a locale run that had to be rebuilt from the directory by hand, and then again to a matrix
+    with seven cells to redo after a driver fix, against 285 that stood.
 
     Replaced by name and never removed, so the merge cannot lose a cell. The cost of that choice is
     that a *renamed* scene leaves its old entry behind — the directory of screenshots is the truth,
@@ -1764,28 +1930,27 @@ def run_matrix(
     report_path: Path | None = None,
     retries: int = 0,
 ) -> None:
-    # `keeps_watch_prompt` scenes go first, exactly as they do in `screenshots.py`, and for the same
-    # reason: the seed leaves one expired watch and every other scene opens by tapping `Close it`,
-    # which *deletes the row* (WatchExpiry.kt — "close, dismiss and swipe-away are one action"). In
-    # declared order `home` runs ~20 scenes ahead of `watch-expiry`, so the prompt is gone by then
-    # and the shot is a plain Home screen under a dialog's name. Sorting is stable, so every other
-    # scene keeps the order it is written in — which the inset findings are read against.
+    # `keeps_seeded_prompt` scenes go first, exactly as they do in `screenshots.py`, and for the same
+    # reason: every other scene opens by dismissing the prompt, and dismissing it is permanent. In
+    # declared order a scene twenty places ahead of the prompt's own would consume it, and the shot
+    # would be a plain screen under a dialog's name. Sorting is stable, so every other scene keeps
+    # the order it is written in — which the inset findings are read against.
     #
     # Grouped by seed first, so a variant costs one reseed per cell instead of one per scene, and
     # every default-seed scene runs before any variant touches the install. "" sorts before every
     # variant name, which is what puts them in that order.
-    scenes = sorted(scenes, key=lambda scene: (scene.seed, not scene.keeps_watch_prompt))
+    scenes = sorted(scenes, key=lambda scene: (scene.seed, not scene.keeps_seeded_prompt))
     for config in configs:
-        # Seed *before* pinning the config, never after. Sorting fixes the watch prompt in the first
-        # cell only — answering it is permanent, so cell 1 eats the one expired watch the seed
-        # leaves and cells 2-4 would shoot a stale screen however they are ordered. But the seed
+        # Seed *before* pinning the config, never after. Sorting fixes a seeded prompt in the first
+        # cell only — answering it is permanent, so cell 1 consumes it and cells 2-4 would shoot a
+        # stale screen however they are ordered. But the seed
         # starts with a `pm clear`, and a wipe costs the rotation (see [wipe]), so seeding after
         # `apply_config` silently unpins every landscape cell. `full` only: `empty` wipes on purpose
         # to reach the wizard, and `mismatch` manages its own database surgery.
         if suite == "full":
             # Invalidated rather than compared: a cell must reseed even when the last one left the
-            # right variant on the phone, because answering the watch-expiry prompt is permanent and
-            # only a fresh seed brings it back. [ensure_seed] then does the work, and asking for the
+            # right variant on the phone, because answering a seeded prompt is permanent and only a
+            # fresh seed brings it back. [ensure_seed] then does the work, and asking for the
             # first scene's seed rather than the plain one keeps a variant-only run to one reseed.
             invalidate_seed()
             ensure_seed(scenes[0].seed if scenes else "")

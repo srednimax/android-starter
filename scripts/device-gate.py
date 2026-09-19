@@ -251,11 +251,10 @@ def norm(text: str) -> str:
 def all_labels() -> list[str]:
     """Every label on a screen top to bottom, collected while scrolling to the end.
 
-    **What a viewport-only read gets wrong here.** The Care tab's delivery line — the sentence this
-    whole gate item is about — is composed *below* Routine care, so a dump of the tab as it opens
-    does not contain it and `on_screen` answers False for a line that is plainly on the screen.
-    Worse, the negative form of that check then passes for the same wrong reason, which is a cell
-    that cannot fail.
+    **What a viewport-only read gets wrong.** A status line composed below a screen's first sections
+    is not in a dump of the screen as it opens, so `on_screen` answers False for a line that is
+    plainly there. Worse, the negative form of that check then passes for the same wrong reason,
+    which is a cell that cannot fail.
     """
     seen: list[str] = []
     previous = ""
@@ -280,26 +279,14 @@ def anywhere(needle: str) -> bool:
     return any(norm(needle) in norm(label) for label in all_labels())
 
 
-def delivery_line() -> str:
-    """The Care tab's reminder-delivery sentence, whichever of the six it currently is.
-
-    Recorded rather than merely matched, so a reading that fails says *which* state the app was in
-    — the difference between "blocked" and "best-effort, battery" is the whole finding.
-    """
-    # The **longest** match, because the section this line sits under is headed *Reminders* and a
-    # first-match read returns the heading — a one-word answer that looks like a state and is not.
-    lines = [label for label in all_labels() if "reminder" in norm(label)]
-    return max(lines, key=len) if lines else "(no delivery line)"
-
-
 def matches(needle: str, *, exact: bool = False, scroll: bool = False) -> list:
     """Every distinct node containing `needle`, in the order the dump lists them.
 
     `exact` compares the node's **text** for equality instead, which is what tells a button apart
-    from the dialog title above it: tapping a course's *Delete* opens *"Delete this course?"*, and a
+    from the dialog title above it: tapping an item's *Delete* opens *"Delete this item?"*, and a
     substring needle then matches the question rather than the answer. Every confirm below uses it.
 
-    **`e2e.find` returns the smallest match and that is wrong here.** A course detail screen carries
+    **`e2e.find` returns the smallest match and that is wrong here.** A detail screen can carry
     several *Delete* buttons; the smallest of them is whichever the
     font happened to lay out narrowest, which is not a choice at all. Document order is, because the
     screen's own actions are composed above its history — so index 0 is always the top one's.
@@ -309,8 +296,8 @@ def matches(needle: str, *, exact: bool = False, scroll: bool = False) -> list:
     """
     if scroll:
         # The same scroll-while-the-screen-is-still-moving loop `e2e.tap` uses, and it is needed for
-        # the same reason: Home's *Archive* and *Delete* sit under the whole profile card, so a
-        # single dump of the top of the screen reports them absent. The signature check is what
+        # the same reason: a detail screen's actions can sit under a tall header, so a single dump
+        # of the top of the screen reports them absent. The signature check is what
         # stops it swiping sixteen times on a screen that cannot scroll.
         previous = ""
         for attempt in range(e2e.TAP_SCROLL_CAP):
@@ -372,8 +359,8 @@ def tap_exact(text: str, index: int = 0) -> None:
 def confirm(title: str, button: str) -> None:
     """Press `button` in the dialog headed `title`, and fail if that dialog is not up.
 
-    **Position is the only thing that tells a dialog's button from the screen's own.** A course
-    a detail screen can carry several *Delete* buttons; opening any of them raises a
+    **Position is the only thing that tells a dialog's button from the screen's own.** A detail
+    screen can carry several *Delete* buttons; opening any of them raises a
     dialog whose confirm says *Delete* as well, and `uiautomator` hands back one flat tree with no
     reliable marker of which window a node came from. What is reliable is that a dialog's buttons
     are drawn **below its title**, so the confirm is the first exact match under it.
@@ -417,7 +404,21 @@ AUTOSTART_ACTIVITY = "com.miui.securitycenter/com.miui.permcenter.autostart.Auto
 # The label HyperOS lists this build under. The debug build takes `applicationIdSuffix = ".debug"`
 # and its own label, so it appears beside a Play install rather than replacing it —
 # which is the whole point, and also why the needle has to be the longer of the two names.
-AUTOSTART_LABEL = f"{project.APP_NAME} Debug"
+AUTOSTART_LABEL = project.DEBUG_APP_NAME
+
+
+def battery_exempt() -> bool:
+    """Whether the ROM has this build on the doze whitelist.
+
+    **The name in `dumpsys deviceidle whitelist` is the reading, and a `grep -c` over the whole dump
+    is not.** Each line is `<source>,<package>,<uid>` — read off this phone, 83 of them — so a
+    substring match is true for any package this one is a prefix of (`…starter` matches the
+    `…starter.debug` line), and the count it returns is a number of matching *lines*, which reads as a
+    boolean right up until two of them match. Matching the package as a whole comma-separated field
+    is the fix, and it survives the two-field form other Android versions print.
+    """
+    listed = shell_ok("dumpsys deviceidle whitelist")
+    return any(e2e.PACKAGE in [field.strip() for field in line.split(",")] for line in listed.splitlines())
 
 
 def shell_ok(cmd: str) -> str:
@@ -433,14 +434,31 @@ def shell_ok(cmd: str) -> str:
     return done.stdout
 
 
-def _system_xml() -> str:
+def _system_xml(attempts: int = 4) -> str:
     """A `uiautomator` dump as raw XML, for the screens that are not this app's.
 
     `e2e.dump_ui` filters to the app's own package, which is right everywhere else and useless here:
     the autostart list and the channel settings both belong to the OEM.
+
+    **The file is deleted before every dump, and that is the whole point of this function.**
+    `uiautomator dump` fails while the screen is still moving — *"ERROR: could not get idle state"* —
+    and it fails by printing to stdout and leaving the **previous** dump on disk. Reading that back
+    is the failure this repository keeps meeting in new places: a stale reading that is
+    indistinguishable from a fresh one. It scrolled a list, dumped mid-fling, matched a row at
+    coordinates from before the swipe, and tapped whatever had moved into that spot — silently
+    granting autostart to a neighbouring app on a bad day.
+
+    So: remove, dump, and require a `<hierarchy` back. A missing file cannot be misread.
     """
-    e2e.shell("uiautomator dump /sdcard/alarm-gate.xml")
-    return e2e.adb("exec-out", "cat", "/sdcard/alarm-gate.xml")
+    for _ in range(attempts):
+        shell_ok("rm -f /sdcard/alarm-gate.xml")
+        shell_ok("uiautomator dump /sdcard/alarm-gate.xml")
+        xml = shell_ok("cat /sdcard/alarm-gate.xml")
+        if "<hierarchy" in xml:
+            return xml
+        # Still moving. Waiting is the fix; retrying immediately just fails again.
+        e2e.settle(1.0)
+    raise StepFailed("uiautomator dump never returned a hierarchy — is the screen still animating?")
 
 
 def autostart_state() -> tuple[int, bool]:
@@ -484,20 +502,30 @@ def set_autostart(on: bool) -> bool:
         # which reaches it whether it is in the allowed list or the long denied one below it.
         for _ in range(40):
             xml = _system_xml()
+            # **The switch's own bounds, not a margin computed from the screen width.** The row is an
+            # accessibility-wrapped Switch carrying the app's name as its content-desc, and the thing
+            # that actually toggles is the `sliding_button` inside it. Aiming at "the right-hand edge
+            # of the row" worked until it did not; the node knows where it is.
             row = re.search(
-                rf'text="{re.escape(AUTOSTART_LABEL)}"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml
+                rf'content-desc="{re.escape(AUTOSTART_LABEL)}"'
+                r'.*?sliding_button.*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                xml,
+                re.S,
             )
             if row:
-                top, bottom = int(row.group(2)), int(row.group(4))
-                width = re.search(r'bounds="\[0,0\]\[(\d+),(\d+)\]"', xml)
-                right_margin = int(width.group(1)) - 130 if width else 1050
-                e2e.shell(f"input touchscreen tap {right_margin} {(top + bottom) // 2}")
+                left, top, right, bottom = (int(row.group(i)) for i in (1, 2, 3, 4))
+                e2e.shell(f"input touchscreen tap {(left + right) // 2} {(top + bottom) // 2}")
                 e2e.settle(2.0)
                 break
             # Downward through the list only. The upward direction is [autostart_state]'s problem
             # and it does not swipe at all any more.
-            e2e.shell("input swipe 600 2000 600 900 250")
-            e2e.settle(0.6)
+            #
+            # **Short and slow, because a fling skips rows.** 1100px in 250ms is a fling: the list
+            # keeps travelling after the finger leaves, and the app's row can pass through the
+            # screen entirely between two dumps — which is what a 107-row denied list did here, over
+            # and over, while the same helper found a row in the ten-row allowed list first time.
+            e2e.shell("input swipe 600 1900 600 1100 400")
+            e2e.settle(1.2)
         else:
             return False
     return autostart_state()[1] == on
@@ -567,9 +595,9 @@ def channel_importance(channel: str = "reminders") -> int:
     the thing under test. `4` is the channel as created, `0` is `IMPORTANCE_NONE` — the owner having
     switched this one category off in system settings, which nothing in the app can ask back.
 
-    The channel does not exist until the Care tab has been opened with a course on it: creating it
-    lazily is deliberate, so a user for whom a feature is irrelevant never sees the row in their
-    settings at all.
+    A channel created lazily — only once the feature that posts to it is in use — does not exist
+    before then, which is deliberate: a user for whom a feature is irrelevant never sees the row in
+    their settings at all. -1 is that answer, not an error.
     """
     out = e2e.shell("dumpsys notification --noredact")
     found = re.search(rf"mId='{channel}'.{{0,200}}?mImportance=(-?\\d+)", out, re.S)
@@ -630,11 +658,19 @@ def main() -> int:
     if args.autostart:
         set_autostart(args.autostart == "on")
 
-    count, present = autostart_state()
-    print(f"autostart screen present : {present}")
+    # **`autostart_state`'s second value is "this build is allowed", not "the screen exists".** It
+    # was printed as `autostart screen present` and read `False` on a phone whose autostart screen is
+    # plainly there and had just been counted — the one misreading that would send a device session
+    # looking for a missing Settings screen instead of at a revoked grant, which is the thing ADR-0003
+    # says makes a boot broadcast never arrive.
+    count, allowed = autostart_state()
+    print(f"autostart allowed        : {'yes' if allowed else 'no'}  ({AUTOSTART_LABEL})")
     print(f"apps allowed to autostart: {count}")
-    print(f"battery optimised        : {shell_ok(f'dumpsys deviceidle whitelist | grep -c {PACKAGE}').strip()}")
-    print(f"exact alarms permitted   : {'yes' if 'true' in shell_ok(f'dumpsys alarm | grep -A2 {PACKAGE}').lower() else 'unknown'}")
+    # `e2e.PACKAGE`, not a bare `PACKAGE`: this file has never had one of its own, and the package
+    # every other reading here is taken against is the **debug** applicationId — the build that is
+    # actually installed when anybody runs this.
+    print(f"battery exempt           : {'yes' if battery_exempt() else 'no'}")
+    print(f"exact alarms permitted   : {'yes' if 'true' in shell_ok(f'dumpsys alarm | grep -A2 {e2e.PACKAGE}').lower() else 'unknown'}")
     print(f"alarms filed under tag   : {ALARM_TAG}")
     for alarm in app_alarms():
         print(f"  {alarm}")
