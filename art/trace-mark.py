@@ -12,8 +12,8 @@ sub-pixel shape information. So:
   4. detect true corners, so a tapering wedge keeps its point instead of being rounded off;
   5. Schneider least-squares cubic fitting between corners.
 
-Writes `path_outer.txt` and `path_eye.txt` next to the working directory and prints both.
-Paste them into `mark.py`'s MARK and EYE. The paste is deliberate rather than automated:
+Writes `path_outer.txt` and `path_hole.txt` next to the working directory and prints both.
+Paste them into `mark.py`'s MARK and HOLE. The paste is deliberate rather than automated:
 `mark.py` is the single definition of the mark, and a definition a script rewrites on every
 run is one nobody can hand-correct.
 
@@ -31,7 +31,13 @@ from PIL import Image, ImageDraw, ImageFilter
 
 # The concept image, given on the command line. Defaults to `concept.png` beside this file.
 SRC = str(Path(__file__).parent / 'concept.png')
-CROP = (6, 6, 591, 592)          # the generator left a near-white frame on two edges
+# (l, t, r, b) if the generator left a frame around the concept; None = the whole image. It was once
+# hard-coded to the frame the *first* concept happened to have, and the first app built from the
+# template had a concept it could not read at all until it was not.
+CROP = None
+# The *concept image's* two tones — its ground and its ink — **not the app's palette**. They are the
+# ends of the axis every pixel is projected onto, so they have to describe the file being traced:
+# sample them from it (any image viewer's picker) before running.
 SURFACE = (254, 247, 237)
 PRIMARY = (107, 50, 58)
 BLUR = 1.0                       # px, kills sub-pixel edge ripple in the source
@@ -44,7 +50,9 @@ FIT_TOL = 0.9                    # px, max deviation of a fitted cubic from the 
 # ---------------------------------------------------------------- field + contours
 
 def insideness(blur=BLUR):
-    im = Image.open(SRC).convert('RGB').crop(CROP)
+    im = Image.open(SRC).convert('RGB')
+    if CROP:
+        im = im.crop(CROP)
     im = im.filter(ImageFilter.ModeFilter(3))
     if blur:
         # The source's straight edges ripple by a fraction of a pixel — a generation artifact,
@@ -309,8 +317,8 @@ def main():
         curves.append((fitted, signed_area(ring)))
     # Normalise for mark.py: every subpath stored clockwise on screen (positive shoelace
     # with y downward, which is what `hole` reverses), centred on the silhouette's bounding
-    # box, longest side UNITS. The eye is centred on the *outer* box, not its own, or it
-    # would drift out of the head.
+    # box, longest side UNITS. The hole is centred on the *outer* box, not its own,
+    # or it would drift out of the silhouette.
     paths = []
     for fitted, _ in curves:
         pts = [tuple(fitted[0][0])]
@@ -327,7 +335,7 @@ def main():
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     paths = [[(round((x - cx) * k, 2), round((y - cy) * k, 2)) for x, y in p] for p in paths]
 
-    for name, pts in zip(('path_outer.txt', 'path_eye.txt'), paths):
+    for name, pts in zip(('path_outer.txt', 'path_hole.txt'), paths):
         out = [f'M{pts[0][0]:g},{pts[0][1]:g}']
         for i in range(1, len(pts), 3):
             out.append('C' + ' '.join(f'{pts[i + j][0]:g},{pts[i + j][1]:g}' for j in range(3)))

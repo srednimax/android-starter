@@ -6,7 +6,8 @@ emits it as `VectorDrawable` path data, `make-feature-graphic.py` rasterises it 
 whatever you put here cannot drift into being two different marks.
 
 The way to replace it: draw or generate a concept image, run `python3 art/trace-mark.py <image>`,
-and paste the curves it prints over MARK and EYE below. Nothing else in the pipeline changes.
+and paste the curves it prints over MARK and HOLE below. Nothing else in the pipeline changes.
+**Commit the concept image beside this file** and record where it came from in `art/README.md`.
 
 **Use art you have the right to ship.** An icon traced from an emoji font, a stock icon or someone
 else's mark is a licence obligation at best and a rejected Play upload at worst. Art you generated
@@ -20,12 +21,19 @@ arbitrary units around an origin at the mark's centre; callers fit them to their
 import re
 from dataclasses import dataclass
 
-# The identity's colours. The mark is near-white, so the ground carries all the colour: recolouring
-# means PRIMARY here *and* the matching fillColor in res/drawable/ic_launcher_background.xml, which
-# make-launcher-icon.py deliberately does not write. Changing one alone is the failure to expect.
-SURFACE = (0xFF, 0xFB, 0xFF)  # the light scheme's `surface`
-PRIMARY = (0x2B, 0x4C, 0x7E)  # `primary`, darkened for contrast against SURFACE at icon sizes
-PRIMARY_DARK = (0x14, 0x25, 0x3F)  # second stop of the feature graphic's gradient
+# The icon's two colours — take both from the app's generated scheme (`scripts/gen_scheme.py`) rather
+# than picking them for the icon, so the identity and the app agree. They are the *only* copy:
+# make-launcher-icon.py writes ic_launcher_background.xml from GROUND, so recolouring the identity is
+# an edit here and a re-run, never a second value somewhere else to keep in step. (It used to be
+# two — this file and a hand-written background drawable — and an app built from the template found
+# them disagreeing the first time its palette moved.)
+#
+# ⚠ **A dark tone of a warm hue is brown.** The first app built from this template tried its
+# `primary` darkened for contrast as the ground and it read as mud; then a gradient, whose middle is
+# the same mud at 44dp. What survived was a flat mid-tone role (`surfaceVariant`) under a light-ish
+# ink (`primary`). Judge the ground at launcher size on a real home screen, light and dark.
+GROUND = (0x2B, 0x4C, 0x7E)  # the icon's flat field — `primary`, darkened for contrast at icon sizes
+MARK_INK = (0xFF, 0xFB, 0xFF)  # the mark on that field — the light scheme's `surface`
 
 
 @dataclass(frozen=True)
@@ -53,7 +61,7 @@ MARK = (
 )
 
 # The hole punched through it.
-EYE = (
+HOLE = (
     "M20,0"
         "C20,14.36 8.36,26 -6,26C-20.36,26 -32,14.36 -32,0"
         "C-32,-14.36 -20.36,-26 -6,-26C8.36,-26 20,-14.36 20,0"
@@ -62,7 +70,7 @@ EYE = (
 
 PARTS = (
     Subpath(MARK),
-    Subpath(EYE, hole=True),
+    Subpath(HOLE, hole=True),
 )
 
 _NUM = re.compile(r"-?\d*\.?\d+(?:e-?\d+)?")
