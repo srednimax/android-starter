@@ -20,6 +20,12 @@ rm bootstrap.py
 python3 scripts/repo-setup.py           # ruleset, merge strategy, Pages — none of it is inherited
 ```
 
+`bootstrap.py` also writes **`.claude/settings.json`**: a Claude Code hook that stops Claude's `git push`
+until the next release's Play notes are written (`scripts/notes-gate.py --pending`). The template ships
+without it on purpose — the template never releases, so the hook would block every push to it — which
+makes installing it a **once-per-repo step**, done by bootstrap. Commit the file, and launch Claude Code
+inside the new repository rather than a parent folder, or the hook never loads.
+
 Then, in order of how much they change the feel of the app:
 
 1. **`art/mark.py`** — replace the placeholder mark, and run `python3 art/make-launcher-icon.py`.

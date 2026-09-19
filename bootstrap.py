@@ -15,6 +15,7 @@ What it changes, and nothing else:
   * `docs/_config.yml`       — the Pages site title
   * `fastlane/Appfile`, the two publish workflows — the Play package name
   * `app/schemas/`           — the exported schema moves with the database class
+  * `.claude/settings.json`  — the Claude Code push hook (created; the template has none, see PUSH_HOOK)
 
 **It does not touch the Kotlin class names**, and that is deliberate. Everything is called
 `AppDatabase`, `AppTheme`, `AppPreferences`, `MainApplication` — names that stay correct whatever the
@@ -53,6 +54,25 @@ ROOT = Path(__file__).resolve().parent
 TEMPLATE_NAMESPACE = "app.starter"
 TEMPLATE_APP_ID = "com.example.starter"
 TEMPLATE_NAME = "Starter"
+
+# The Claude Code hook that runs `notes-gate.py --pending` before every `git push` Claude makes, so a
+# release's Play notes are written on the branch that brings the change instead of in a docs PR after
+# release-please's PR fails the notes gate. Installed here, not committed to the template, because the
+# template never releases: its own `feat:` commits would make every push to it owe notes for a version
+# that will never ship. An app does release, so it gets the hook the moment it becomes one.
+PUSH_HOOK = {
+    "matcher": "Bash",
+    "hooks": [
+        {
+            "type": "command",
+            "if": "Bash(git push*)",
+            "command": 'git -C "$CLAUDE_PROJECT_DIR" fetch -q origin main 2>/dev/null; '
+            'python3 "$CLAUDE_PROJECT_DIR/scripts/notes-gate.py" --pending',
+            "timeout": 30,
+            "statusMessage": "Checking the next release has its notes",
+        }
+    ],
+}
 
 # Where Kotlin lives, per source set. `debug` and `release` are the developer-surface seam.
 SOURCE_SETS = ["main", "test", "androidTest", "debug", "release"]
@@ -229,6 +249,17 @@ def main() -> int:
     # --- Store listing --------------------------------------------------------------------------
     rewrite(ROOT / "docs/store-listing.md", [(f"\n{TEMPLATE_NAME}\n", f"\n{args.name}\n")])
 
+    # --- Claude Code ------------------------------------------------------------------------------
+    # Merged rather than overwritten, in case the new repository already carries settings of its own.
+    settings_file = ROOT / ".claude/settings.json"
+    settings = json.loads(settings_file.read_text()) if settings_file.is_file() else {}
+    pre_tool_use = settings.setdefault("hooks", {}).setdefault("PreToolUse", [])
+    if PUSH_HOOK not in pre_tool_use:
+        pre_tool_use.append(PUSH_HOOK)
+    settings_file.parent.mkdir(exist_ok=True)
+    settings_file.write_text(json.dumps(settings, indent=2) + "\n")
+    print("claude: .claude/settings.json now runs notes-gate.py --pending before every git push")
+
     # --- Git ------------------------------------------------------------------------------------
     if args.fresh_git:
         shutil.rmtree(ROOT / ".git", ignore_errors=True)
@@ -249,7 +280,9 @@ def main() -> int:
         "  ./gradlew assembleDebug test\n"
         f"  python3 scripts/gen_scheme.py > app/src/main/java/{args.namespace.replace('.', '/')}/theme/Color.kt\n"
         "  $EDITOR art/mark.py && python3 art/make-launcher-icon.py\n"
-        "  rm bootstrap.py"
+        "  rm bootstrap.py\n"
+        "  commit .claude/settings.json, and start Claude Code *inside* this directory - it reads\n"
+        "  project hooks only from the folder it was launched in"
     )
     return 0
 
