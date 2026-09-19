@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Capture every screen in light and dark, as the before/after evidence for Phase 7's redesign.
+"""Capture every screen in light and dark — the before/after record of a redesign, and the listing's set.
 
-Phase 7 changes how the app looks and says nothing about what it does, which makes "is this better?"
-the only question that matters and the hardest one to answer honestly. The answer is a *before* set:
-every screen, shot before a line changes, so the comparison at the end is against a record rather
-than against a memory of what the old one looked like.
+A redesign changes how the app looks and says nothing about what it does, which makes "is this
+better?" the only question that matters and the hardest one to answer honestly. The answer is a
+*before* set: every screen, shot before a line changes, so the comparison at the end is against a
+record rather than against a memory of what the old one looked like.
 
 This is not `edge-to-edge.py` with different flags — it is the same walk with a different axis and a
 different output. That script's matrix is **rotation x navigation mode** and its deliverable is the
@@ -12,44 +12,48 @@ inset arithmetic; this one's matrix is **theme x locale** and its deliverable is
 sequences are imported from it rather than copied: [SCENES] is the expensive asset in this repo and
 two drifting copies of it would both keep producing screenshots, just of the wrong screens.
 
-Run it before the redesign starts and again at the gate, same scenes, same cells:
+⚠ **[SCENES] describes the template's placeholder screens.** Rewrite it against your own the day the
+placeholder domain goes — until then a run walks to screens that do not exist, and the nightly
+edge-to-edge job reports a red that means nothing. That rewrite is the one edit that makes both
+scripts yours; everything else here is about the phone, not the app.
 
     scripts/screenshots.py --out docs/screenshots/before
     scripts/screenshots.py --out docs/screenshots/after
     scripts/screenshots.py --out DIR --theme light          # one cell
-    scripts/screenshots.py --out DIR --scene home,weight    # one screen, while iterating
-    scripts/screenshots.py --out DIR --scene home,weight --numbered   # 1_home-en.png, 2_weight-en.png
+    scripts/screenshots.py --out DIR --scene items,settings # one screen, while iterating
+    scripts/screenshots.py --out DIR --scene items,settings --numbered   # 1_items-en.png, 2_settings-en.png
+    scripts/screenshots.py --out DIR --build release --numbered --scene …  # the store set, see below
     scripts/screenshots.py --restore                        # hand the phone back
 
-**The Play listing takes the LIGHT set** (changed 2026-08-24; it was dark for the whole of Phase 9, and
-1.8.0 went up under the old rule). Both cells are still captured, because the app ships both themes and
-the before/after comparison needs the pair — this is a decision about what goes in the Console. Use
-`--theme light` when the run is only for the listing.
+**A store set comes from the shipped build** — `--build release`, which drives the release
+applicationId instead of `.debug`. The developer-only Settings section lives in `app/src/debug/`, so
+only the shipped build is free of it. That install is somebody's real app, so the flag also implies
+`--no-reseed` and the wipe refuses outright: the shots show whatever is really set up on it.
 
-Filenames carry the locale they were taken in — `home-pl.png`, not `home.png` — because a PNG loses the
-directory that used to carry its language the moment anyone moves it. See [locale_tag].
+Filenames carry the locale they were taken in — `items-pl.png`, not `items.png` — because a PNG loses
+the directory that used to carry its language the moment anyone moves it. See [locale_tag].
 
-`--numbered` additionally prefixes each file with its position in the `--scene` list — `1_home-pl.png`.
+`--numbered` additionally prefixes each file with its position in the `--scene` list — `1_items-pl.png`.
 Play orders a listing's screenshots by the order they are uploaded, and a file manager sorts
-alphabetically, so without the prefix "backup" leads and "weight" trails whatever order was intended.
-The number comes from the order **asked for**, not from [SCENES], which is why `--scene` preserves its
-argument order rather than the table's. Opt-in, because every other consumer of these filenames — the
+alphabetically, so without the prefix the set sorts by scene name rather than by intent. The number
+comes from the order **asked for**, not from [SCENES], which is why `--scene` preserves its argument
+order rather than the table's. Opt-in, because every other consumer of these filenames — the
 before/after comparisons, the manifest — refers to them without one.
 
-Each cell runs all three suites in the one order that works: `full` against the seeded sample data,
-then `mismatch`, then `empty` — which wipes the install and is therefore last. Each cell then reseeds,
-so the next one starts from the same place and the phone is left usable rather than blank.
+Each cell runs the suites in the one order that works: `full` against the seeded sample data, then
+`mismatch` (only when the app has a database), then `empty` — which wipes the install and is
+therefore last. Each cell then reseeds, so the next one starts from the same place and the phone is
+left usable rather than blank.
 
-**It wipes the debug install** (`<applicationId>.debug`, from `project.py`). That is not a Play build —
-different `applicationId`, separate install, untouched by this. (The Play install holds dummy data too;
-what is irreplaceable about it is the *install*, not the contents — ADR-0023's Phase 9 amendment.)
+**The phone's own state is borrowed and handed back**: rotation, navigation mode, per-app locale on
+both installs, Do Not Disturb, the status bar (SystemUI demo mode, so a listing does not ship your
+notification icons and battery level), and the dark-theme setting — read before the first cell and
+restored afterwards, never guessed.
 
-**It destroys anything armed on the debug install, and it does so silently.** Every cell reseeds, and a
-cell's first scene answers the watch-expiry prompt with `Close it`, which *deletes the watch row*. A
-2026-08-21 run of nine locales left `watches` empty and took an expiry that had been armed since 08-15
-with it — the reading Phase 9 §1 had been waiting on for two weeks. Nothing warned, because from the
-script's side reseeding is the correct behaviour. **Check for armed state before running this** — a watch,
-a dose slot, a scheduled sweep — or accept that it is gone.
+**It wipes the debug install** (`<applicationId>.debug`, from `project.py`), and with it anything
+armed there. Every cell reseeds, and reseeding is correct from the script's side, so nothing warns: the
+app this template was extracted from lost an alarm it had been waiting two weeks to read that way. **Check the
+debug install for armed state before running this**, or accept that it is gone.
 """
 
 from __future__ import annotations
@@ -57,13 +61,14 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import sys
 import time
 from pathlib import Path
 
 # `edge-to-edge.py` is not an importable module name — the hyphen makes it un-`import`-able by the
 # ordinary statement, so it is loaded by path instead. Renaming it was the alternative and it is
-# referenced by name in DOD.md, PLAN.md and every 4f note; a loader stanza is the cheaper edge.
+# referenced by name in CI and the docs; a loader stanza is the cheaper edge.
 _SPEC = importlib.util.spec_from_file_location("edge_to_edge", Path(__file__).parent / "edge-to-edge.py")
 e2e = importlib.util.module_from_spec(_SPEC)
 # Registered before it executes, not after: `@dataclass` resolves `cls.__module__` through
@@ -78,9 +83,8 @@ _SPEC.loader.exec_module(e2e)
 # --------------------------------------------------------------------------------------------
 
 # Portrait + gesture only, and that is a deliberate narrowing rather than an oversight. Orientation
-# and navigation mode are what `edge-to-edge.py` exists to cover, and Phase 7's gate re-runs that
-# matrix in full; repeating those four cells here would shoot the same design four times to learn
-# nothing about the design.
+# and navigation mode are what `edge-to-edge.py` exists to cover; repeating those four cells here
+# would shoot the same design four times to learn nothing about the design.
 CONFIG = e2e.Config("portrait-gesture", 0, "gesture")
 
 # Dark is not a variant of light and does not review as one. Contrast, elevation and the surface
@@ -92,20 +96,74 @@ THEMES = {"light": "no", "dark": "yes"}
 # suite needs out from under it. `mismatch` corrupts the schema version and puts it back, which is
 # survivable in the middle; it is second because it is cheap and because running it after a wipe
 # would corrupt a database with nothing in it.
-SUITES = ("full", "mismatch", "empty")
+# `mismatch` fakes a schema the build cannot open, which needs a database to fake it in — an app
+# that has deleted Room has neither the file nor the refusal screen (scripts/project.py).
+SUITES = ("full", "mismatch", "empty") if e2e.project.HAS_DATABASE else ("full", "empty")
+
+
+def app_theme_default() -> "str | None":
+    """The theme a freshly cleared install starts on, read from `AppPreferences.kt`'s fallback.
+
+    **This is what decides whether [set_theme] is a lever at all.** Every cell begins with a
+    `pm clear`, so the app is on its *default* before the first tap. While that default is
+    `ThemeMode.SYSTEM` the app follows `cmd uimode night` and both cells work. The day the default
+    becomes `DARK` (or `LIGHT`), the system setting moves nothing — and nothing fails: an app built
+    from this template walked a whole light cell, wrote six files under `light/` and reported
+    success, and every one of them was dark. So [main] asks this first and refuses the cell the
+    lever can no longer reach. None when the fallback cannot be read, which only warns.
+    """
+    source = e2e.project.MAIN_SRC / "data/AppPreferences.kt"
+    if not source.is_file():
+        return None
+    found = re.search(r"\?:\s*ThemeMode\.(\w+)", source.read_text(encoding="utf-8"))
+    return found.group(1) if found else None
 
 
 def set_theme(theme: str) -> None:
-    """Flip the system dark theme. `AppTheme` reads `isSystemInDarkTheme()`, so this is the lever.
+    """Flip the system dark theme. The app follows it while its stored theme is SYSTEM — the default.
 
-    There is no in-app theme preference to drive instead — `MainActivity` calls `AppTheme {}` with
-    no arguments — which is why this is a device setting and not a tap sequence.
+    The in-app preference (Settings → Appearance) is the other lever, and a cleared install starts
+    on its default, which is why the device setting works here. See [app_theme_default] for when it
+    stops working and how [main] notices.
     """
     e2e.shell(f"cmd uimode night {THEMES[theme]}")
     # The mode change restarts activities out of process. Nothing publishes a "the new configuration
     # has landed" signal that arrives before the recomposition does, so this is a wait; every scene
     # force-stops and relaunches anyway, which is the real guarantee.
     e2e.settle(2.5)
+
+
+def read_theme() -> tuple[str, bool]:
+    """The phone's own dark-theme mode before the run moves it, and whether a one-off toggle rode on it.
+
+    **Read, never assumed.** `--restore` used to write back `auto`, which is not "whatever the phone
+    had" but Android's sunset-to-sunrise schedule: a phone set to dark was still dark at bedtime and
+    light again by morning. `cmd uimode night` prints its mode as the same word it accepts — `yes`,
+    `no`, `auto`, `custom`, and `custom_schedule` / `custom_bedtime` from API 34 — so the reading is
+    also the command that puts it back.
+
+    **The override is the half that cannot go back, and it is a platform limit.** Toggling dark from
+    Quick Settings while the mode is `auto` or `custom` does not change the mode; it sets an override
+    that lasts until the schedule's next transition. The run's first `yes`/`no` clears it and no
+    shell verb sets one, so the most this script can do is say so.
+    """
+    mode = e2e.shell("cmd uimode night").split(":", 1)[-1].strip()
+    flags = re.search(r"mOverrideOn/Off=(\w+)/(\w+)", e2e.shell("dumpsys uimode"))
+    overridden = mode not in ("yes", "no") and flags is not None and "true" in flags.groups()
+    return mode, overridden
+
+
+def restore_theme(mode: str, overridden: bool) -> None:
+    """Put back what [read_theme] saw. Leaves the phone alone rather than guess at an unreadable mode."""
+    if mode in ("", "unknown"):
+        print("  -- note: the phone's dark theme read as unknown before the run; left as the run left it")
+        return
+    e2e.shell(f"cmd uimode night {mode}")
+    if overridden:
+        print(
+            f"  -- note: dark theme is back on `{mode}`, but the one-off Quick Settings toggle on top of"
+            " it is gone — the phone follows its schedule until that toggle is tapped again"
+        )
 
 
 # The locale lever moved to `edge-to-edge.py`, beside the needle table it has to agree with — the
@@ -182,11 +240,11 @@ def run_cell(theme: str, locale: str | None, scenes: list, out: Path, reseed: bo
     """One theme, every suite, in [SUITES] order.
 
     The reseed is at the *start* rather than the end, and that is the load-bearing detail of the
-    whole script. A cell answers the watch-expiry prompt on its very first scene — the `Close it`
-    tap in `reach_scene` — and answering it is permanent, so a second cell inheriting the first
-    one's install finds the prompt already gone and shoots an ordinary Home screen under the name
-    `watch-expiry`. Starting each cell from a fresh seed is what makes light and dark comparable at
-    all, rather than a pair that quietly diverges after scene one.
+    whole script. Anything the seed stages for one scene — a one-shot prompt, see
+    `Scene.keeps_seeded_prompt` — is consumed by the first cell, so a second cell inheriting the
+    first one's install finds it already gone and shoots an ordinary screen under the prompt's name.
+    Starting each cell from a fresh seed is what makes light and dark comparable at all, rather than
+    a pair that quietly diverges after scene one.
     """
     out_dir = out / theme
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -196,8 +254,8 @@ def run_cell(theme: str, locale: str | None, scenes: list, out: Path, reseed: bo
 
     if reseed:
         # Invalidated first, so a cell always reseeds even when the previous one left the same seed
-        # on the phone — the watch-expiry prompt is the reason (see below), and only a fresh seed
-        # brings it back. `min` picks the seed the *first* scene will want: scenes are sorted by
+        # on the phone — a consumed one-shot prompt is the reason (see above), and only a fresh
+        # seed brings it back. `min` picks the seed the *first* scene will want: scenes are sorted by
         # seed, "" sorts first, so this is "" unless every scene here is a variant one.
         e2e.invalidate_seed()
         e2e.ensure_seed(min((scene.seed for scene in scenes if scene.suite == "full"), default=""))
@@ -215,16 +273,11 @@ def run_cell(theme: str, locale: str | None, scenes: list, out: Path, reseed: bo
             wanted = [scene for scene in scenes if scene.suite == suite]
             if not wanted:
                 continue
-            # `keeps_watch_prompt` scenes go first, and this is a fix rather than a preference. The
-            # seed leaves exactly one expired watch (Sznycel's 3-day, started 4 days ago; Lily's
-            # 7-day is still running), and every other scene opens by tapping `Close it` — which
-            # *deletes the row*, per WatchExpiry.kt's "close, dismiss and swipe-away are one
-            # action". In SCENES order `home` runs ~20 scenes before `watch-expiry`, so the prompt
-            # is long gone by then and `watch-expiry.png` is a plain Home screen wearing the name of
-            # a dialog. Sorting is stable, so everything else keeps its declared order.
-            # Seed group first, then the watch prompt inside it — the same order and the same
-            # reasons as `edge-to-edge.py`'s [run_matrix].
-            wanted.sort(key=lambda scene: (scene.seed, not scene.keeps_watch_prompt))
+            # Seed group first, then any scene that photographs a seeded one-shot prompt — before
+            # every other scene dismisses it for good. The same order and the same reasons as
+            # `edge-to-edge.py`'s [run_matrix]; sorting is stable, so everything else keeps its
+            # declared order.
+            wanted.sort(key=lambda scene: (scene.seed, not scene.keeps_seeded_prompt))
             schema_dirty = schema_dirty or suite == "mismatch"
             print(f"  -- {suite} ({len(wanted)} scenes)")
             for scene in wanted:
@@ -278,6 +331,13 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--build",
+        choices=["debug", "release"],
+        default="debug",
+        help="which install to shoot. 'release' is the shipped one — the only one a store set should "
+        "come from — and implies --no-reseed",
+    )
+    parser.add_argument(
         "--no-reseed",
         action="store_true",
         help="skip the wipe-and-seed each cell starts with. For iterating on one screen, not for a full set",
@@ -286,10 +346,23 @@ def main() -> int:
 
     if args.restore:
         e2e.restore_device()
-        set_locale(None)
-        e2e.shell("cmd uimode night auto")
-        print("rotation, navigation mode, locale, theme and Do Not Disturb handed back to the phone")
+        # **Both installs, not the one `--build` happens to name** — see edge-to-edge.py's --restore.
+        for build in ("debug", "release"):
+            e2e.select_build(build)
+            set_locale(None)
+        # No theme here: a separate invocation has no record of what the phone had, and writing a
+        # guess is how this line used to leave a dark phone on Android's sunset schedule (`auto` is
+        # not "whatever it was"). A run puts the theme back itself — see [read_theme].
+        print("rotation, navigation mode, locale, Do Not Disturb and the status bar handed back to the phone")
         return 0
+
+    e2e.select_build(args.build)
+    if args.build == "release" and not args.no_reseed:
+        # Not an error: the shipped install is already "seeded" in the only sense that matters — it
+        # is an app in use — and the wipe would refuse anyway. Said out loud because it changes what
+        # the shots show: real settings, and whatever theme is actually set.
+        print("-- --build release implies --no-reseed: the shipped install is never wiped")
+        args.no_reseed = True
 
     if not args.out:
         parser.error("--out is required unless --restore")
@@ -301,6 +374,23 @@ def main() -> int:
         if unknown:
             parser.error(f"unknown theme(s): {', '.join(sorted(unknown))}")
         themes = [theme for theme in THEMES if theme in wanted]
+
+    # **Refused rather than shot wrong.** See [app_theme_default]: once a cleared install no longer
+    # starts on SYSTEM, `cmd uimode night` cannot reach the app, and the cell it cannot reach would
+    # write the other theme's pixels under this theme's name and report success. It refuses the
+    # *default* too, which is the point: leaving `--out DIR` as a silent half-truth keeps the trap
+    # open for exactly the person who has not read this file.
+    default = app_theme_default()
+    if default is None:
+        print("-- note: could not read ThemeMode's fallback in AppPreferences.kt; trusting cmd uimode")
+    elif default in ("DARK", "LIGHT"):
+        stuck = [theme for theme in themes if theme != default.lower()]
+        if stuck:
+            parser.error(
+                f"the {', '.join(stuck)} cell cannot be captured: AppPreferences' theme defaults to "
+                f"{default}, so a cleared install ignores `cmd uimode night`. Use --theme {default.lower()}, "
+                "or drive Settings -> Appearance after each reseed",
+            )
 
     scenes = list(e2e.SCENES)
     if args.scene:
@@ -331,7 +421,7 @@ def main() -> int:
         "config": CONFIG.name,
         "themes": [],
         # the app's own generated scheme: `dynamicColor` defaults **off**
-        # (ADR-0027) and every cell here starts from a wipe, so the Material You toggle is at its
+        # (ADR-0006) and every cell here starts from a wipe, so the Material You toggle is at its
         # default and the colours are reproducible from `theme/Color.kt` alone.
         #
         # The *before* set is not, and the difference is the point rather than a caveat: it was shot
@@ -340,22 +430,29 @@ def main() -> int:
         # on hue, where the before half is not a fixed target.
         "dynamic_color": "off — the app's own scheme (ADR-0006)",
     }
-    # Do Not Disturb for the length of the run, off again whatever happens — the seed's 20:00 dose
-    # posts a heads-up banner over Home a minute after every reseed, and this script reseeds once
-    # per cell. See [e2e.set_dnd]; the `finally` is because it is a phone-wide setting.
+    # Do Not Disturb for the length of the run, off again whatever happens — a seeded reminder can
+    # post a heads-up banner over the screen a minute after every reseed, and this script reseeds
+    # once per cell. See [e2e.set_dnd]; the `finally` is because it is a phone-wide setting.
+    # The theme is phone-wide too, so it is read before the first cell writes it and put back in the
+    # same `finally`. So is the status bar, which demo mode empties of this phone's own icons — see
+    # [e2e.set_demo_status_bar]; a status bar left in demo mode looks like a broken phone.
+    phone_theme = read_theme()
     e2e.set_dnd(True)
+    e2e.set_demo_status_bar(True)
     try:
         for theme in themes:
             print(f"\n=== {theme}")
             manifest["themes"].append(run_cell(theme, args.locale, scenes, args.out, not args.no_reseed))
 
         # The `empty` suite ends with the install wiped, so without this the phone is handed back
-        # blank — which is how the 5 Aug matrix run left it (DOD §1). Only owed when a wipe happened.
+        # blank. Only owed when a wipe happened.
         if any(scene.suite == "empty" for scene in scenes) and not args.no_reseed:
             print("\n-- reseeding, so the phone is left usable")
             e2e.reset_to_seeded()
     finally:
         e2e.set_dnd(False)
+        e2e.set_demo_status_bar(False)
+        restore_theme(*phone_theme)
 
     manifest["seconds"] = round(time.time() - started)
     manifest_path = args.out / "manifest.json"

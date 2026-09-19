@@ -9,15 +9,22 @@ rather than as letterboxing.
     python3 art/pad-screenshot.py <in.png> <out.png>
     python3 art/pad-screenshot.py <in.png> <out.png> --crop-status-bar
 
-`--crop-status-bar` removes the top [STATUS_BAR_PX] before padding. The driver holds the phone in
-Do Not Disturb for the length of a run — see `set_dnd` in `scripts/edge-to-edge.py`, where the
-alternative of revoking `POST_NOTIFICATIONS` is rejected because it makes the app draw a
-blocked-state banner into the very screens that photograph reminder copy — and Zen puts a crossed
-bell in the status bar of every frame. It cannot be suppressed on the device: HyperOS ignores
-SystemUI demo mode outright (`sysui_demo_allowed` plus the clock/battery/notifications/zen
-broadcasts change nothing), so the only place the bell can be removed is here. The clock and the
-battery go with it, which is the point rather than a side effect — a listing shot of the app is
-not a photograph of somebody's phone.
+`--crop-status-bar` removes the top [STATUS_BAR_PX] before padding, and **the screenshot path does
+not need it any more.** The problem it solved is real: the driver holds the phone in Do Not Disturb
+for the length of a run — see `set_dnd` in `scripts/edge-to-edge.py` — and Zen puts a crossed bell in
+the status bar of every frame, alongside notification icons and a network-speed readout that are
+nobody's business.
+
+**This file used to say HyperOS ignores SystemUI demo mode outright. That was wrong, or has stopped
+being true** — re-measured by an app built from this template (2026-09): `sysui_demo_allowed` plus
+the notifications/battery commands empties the bar. `set_demo_status_bar` in
+`scripts/edge-to-edge.py` records what the ROM honours and what it drops, and `screenshots.py` turns
+it on for every run. So the bar is cleaned at capture time and kept in frame, which keeps the shot
+the shape of a phone.
+
+The flag stays for a device where demo mode does not work, because cropping is still the only answer
+to a bar that cannot be emptied. Prefer emptying it: a cropped shot is not the shape of anything the
+user has ever held.
 """
 
 import argparse
@@ -29,7 +36,7 @@ RATIO_W, RATIO_H = 9, 16
 
 # The portrait `statusBars` inset on the test Xiaomi, measured by the edge-to-edge matrix rather
 # than derived from a density: 130px at 480dpi, and it coincides with the punch-hole cutout, so one
-# number takes both. See the table in `docs/edge-to-edge.md`. A different phone would need its own
+# number takes both. `scripts/edge-to-edge.py` is what measures it. A different phone would need its own
 # reading — this is a device constant, not a Play one.
 STATUS_BAR_PX = 130
 

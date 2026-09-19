@@ -5,8 +5,18 @@
     would ask you to translate a developer menu.
 
     This file is in `src/debug/res/`, so it is not merged into a release build at all.
+
+    `app_name` is overridden here so the two copies on the phone are told apart at a glance.
+    `applicationIdSuffix = ".debug"` already lets the debug build sit *beside* a Play copy, but both
+    then carry the same name and icon — and picking the wrong one is how a local change gets tested
+    against the store build, or a store bug gets chased in a build that never had it. A resource
+    override rather than a `resValue`: `main/` already declares `app_name`, so a generated one would
+    collide as a duplicate, while a debug `res/` overrides main's by name with no build logic at all.
+    `scripts/project.py` reads this label back as DEBUG_APP_NAME, because OEM permission screens
+    list the debug build under exactly this string.
 -->
 <resources>
+    <string name="app_name" translatable="false">Starter debug</string>
     <string name="debug_section" translatable="false">Debug</string>
     <string name="debug_seed" translatable="false">Seed sample data</string>
     <string name="debug_wipe" translatable="false">Delete all items</string>
