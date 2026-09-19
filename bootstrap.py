@@ -10,10 +10,12 @@ What it changes, and nothing else:
                                line in every `.kt` file is rewritten
   * `scripts/project.py`     — APP_NAME and DATABASE_FILE
   * `scripts/gen_scheme.py`  — the package the generated Color.kt declares
-  * `res/values*/strings.xml`— `app_name`
+  * `res/values*/strings.xml`— `app_name`, and the debug build's "<name> debug" label
+  * `README.md`              — replaced by a short one for the app; the template's describes the template
+  * `LICENSE`                — replaced by an all-rights-reserved notice until you choose a licence
   * `release-please-config.json`, `.release-please-manifest.json`, `CHANGELOG.md`
   * `docs/_config.yml`       — the Pages site title
-  * `fastlane/Appfile`, the two publish workflows — the Play package name
+  * `fastlane/Appfile`, the three publish workflows — the Play package name
   * `app/schemas/`           — the exported schema moves with the database class
   * `.claude/settings.json`  — the Claude Code push hook (created; the template has none, see PUSH_HOOK)
 
@@ -27,7 +29,9 @@ except `scripts/project.py`, which says so.
 
 **`--appid` is the one that can never change.** A Play Console package name is fixed the moment the
 app entry is created: not renameable, not transferable to a new listing without losing every install
-and review. Choose it as if you were choosing a domain. `--namespace` is only the Kotlin package
+and review. Choose it as if you were choosing a domain — and if you do not own one, namespace it
+under your GitHub account, `io.github.<user>.<app>`, which is a name you provably control. Never
+ship `com.example.*`: Play refuses it, and finding that out at the first upload is late. `--namespace` is only the Kotlin package
 root and can be refactored any afternoon, so it is fine for the two to disagree — and they often
 should, because a good store identity and a good source package have different constraints.
 
@@ -37,6 +41,9 @@ should, because a good store identity and a good source package have different c
     python3 scripts/gen_scheme.py > app/src/main/java/<namespace as dirs>/theme/Color.kt
     $EDITOR art/mark.py            # replace the placeholder mark
     rm bootstrap.py
+
+Then `docs/optional-modules.md` — delete what the app does not need **before the first upload**,
+while deleting is free — and `docs/DOD.md`'s *Before the first upload*.
 """
 
 from __future__ import annotations
@@ -47,6 +54,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -73,6 +81,53 @@ PUSH_HOOK = {
         }
     ],
 }
+
+# Written over the template's LICENSE. Reserves everything: a notice that grants nothing is the only
+# safe default for a repository that is public from its first push. Replace it with the licence you
+# choose — the two apps behind this template chose differently (a noncommercial licence, and
+# source-available with all rights reserved), which is why the template does not choose for you.
+LICENSE = """{name}
+Copyright (c) {year} {owner}. All rights reserved.
+
+No licence is granted yet. This notice was written by the template's bootstrap and
+stands until the owner replaces it with the licence they choose.
+
+Third-party components bundled in the built application remain under their own
+licences, reproduced in the app's licences screen and in
+app/src/main/assets/licences/. Those obligations travel with every build.
+"""
+
+README = """# {name}
+
+<One or two sentences: what the app does, and for whom.>
+
+<The constraint that shapes everything — for example: "Every feature is free. No ads, no server, no
+account.">
+
+## Status
+
+Just bootstrapped from [android-starter](https://github.com/srednimax/android-starter). The release
+pipeline and quality gates are real; the screens are still the template's placeholder app. Nothing
+is on Play yet.
+
+## Contributing
+
+<Say whether pull requests are accepted — and make it agree with [LICENSE](LICENSE).>
+
+## Build
+
+```bash
+./gradlew assembleDebug          # build
+./gradlew installDebug           # build + install on the connected phone
+./gradlew test                   # JVM unit tests
+./gradlew connectedAndroidTest   # instrumented tests — needs a device
+./gradlew spotlessApply          # format (the CI gate is spotlessCheck)
+python3 scripts/project.py       # what the toolchain thinks this app is called
+```
+
+Commit subjects are [Conventional Commits](https://www.conventionalcommits.org); release-please
+derives the version and `CHANGELOG.md` from them. See [docs/RELEASING.md](docs/RELEASING.md).
+"""
 
 # Where Kotlin lives, per source set. `debug` and `release` are the developer-surface seam.
 SOURCE_SETS = ["main", "test", "androidTest", "debug", "release"]
@@ -163,6 +218,13 @@ def main() -> int:
     args = parser.parse_args()
 
     check(args.namespace, args.appid)
+    if args.appid.startswith("com.example."):
+        print(
+            f"bootstrap: warning — '{args.appid}' is a placeholder id. Play refuses com.example.*, and the\n"
+            "  applicationId can never change once the Play entry exists. Fine for a throwaway; for an app,\n"
+            "  re-run with --appid io.github.<user>.<app> or a domain you own.",
+            file=sys.stderr,
+        )
     database = args.db or f"{re.sub(r'[^a-z0-9]', '', args.name.lower()) or 'app'}.db"
 
     plan = [
@@ -210,7 +272,18 @@ def main() -> int:
 
     # --- Resources ----------------------------------------------------------------------------
     for strings in ROOT.glob("app/src/*/res/values*/strings.xml"):
-        rewrite(strings, [(f'"app_name" translatable="false">{TEMPLATE_NAME}<', f'"app_name" translatable="false">{args.name}<')])
+        rewrite(
+            strings,
+            [
+                (f'"app_name" translatable="false">{TEMPLATE_NAME}<', f'"app_name" translatable="false">{args.name}<'),
+                # The debug source set's own label, which OEM permission screens list the debug build
+                # under — `scripts/project.py` reads it back as DEBUG_APP_NAME.
+                (
+                    f'"app_name" translatable="false">{TEMPLATE_NAME} debug<',
+                    f'"app_name" translatable="false">{args.name} debug<',
+                ),
+            ],
+        )
     rewrite(ROOT / "app/src/main/java" / args.namespace.replace(".", "/") / "data/AppDatabase.kt",
             [('APP_DATABASE_FILE = "app.db"', f'APP_DATABASE_FILE = "{database}"')])
     rewrite(ROOT / "app/src/main/java" / args.namespace.replace(".", "/") / "data/backup/BackupManifest.kt",
@@ -236,6 +309,16 @@ def main() -> int:
 
     rewrite(ROOT / "docs/_config.yml", [("title: Starter", f"title: {args.name}")])
 
+    # --- The two files that describe the *template* ------------------------------------------------
+    # Both were rewritten by hand in the first bootstrapped app's first hour, and the LICENSE is the one that
+    # matters: the template's own says "use it for anything", and left on an app's public repository
+    # it reads as exactly that grant. Reserving all rights is the only default that grants nothing
+    # by accident; choosing an actual licence is yours, and README says so.
+    owner = subprocess.run(["git", "config", "user.name"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    (ROOT / "LICENSE").write_text(LICENSE.format(name=args.name, owner=owner or "<owner>", year=date.today().year))
+    (ROOT / "README.md").write_text(README.format(name=args.name))
+    print("README.md and LICENSE replaced — the LICENSE reserves all rights until you choose one")
+
     # --- Everywhere the applicationId is stated outside Gradle ----------------------------------
     # These are not derived at build time on purpose: a wrong value uploads to a *different* Play
     # app entry rather than failing, so each one is stated explicitly and rewritten here.
@@ -243,6 +326,7 @@ def main() -> int:
         ROOT / "fastlane/Appfile",
         ROOT / ".github/workflows/publish-play.yml",
         ROOT / ".github/workflows/publish-play-production.yml",
+        ROOT / ".github/workflows/publish-play-closed.yml",
     ]:
         rewrite(path, [(TEMPLATE_APP_ID, args.appid)])
 
@@ -282,7 +366,13 @@ def main() -> int:
         "  $EDITOR art/mark.py && python3 art/make-launcher-icon.py\n"
         "  rm bootstrap.py\n"
         "  commit .claude/settings.json, and start Claude Code *inside* this directory - it reads\n"
-        "  project hooks only from the folder it was launched in"
+        "  project hooks only from the folder it was launched in\n"
+        "\n"
+        "Then, before the first upload (docs/DOD.md has the full list):\n"
+        "  docs/optional-modules.md  - delete what the app does not need while deleting is free\n"
+        "  scripts/aab-permissions.py - EXPECTED lists the template's permissions; keep it true\n"
+        "  scripts/edge-to-edge.py    - SCENES walks the template's screens; rewrite it against yours\n"
+        "  LICENSE, README.md, CLAUDE.md's placeholders"
     )
     return 0
 
