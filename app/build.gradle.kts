@@ -147,10 +147,20 @@ android {
     lint {
         // "A newer version exists" is news, not a defect. Left informational so a red lint run
         // always means something is actually wrong with the code.
+        //
+        // MissingTranslation is here for a sharper reason: it contradicts this project's stated
+        // rule. A branch merges with every shipped language complete, but adding an English string
+        // is explicitly *not* supposed to redden the build — copy gets translated once, against
+        // reviewed wording, rather than twice. `scripts/translation-gate.py` enforces completeness
+        // at the merge boundary, where the decision belongs, and it understands staged drafts and
+        // `translatable="false"` where lint does not. Left fatal here, every English-first commit
+        // is red for the entirely normal reason that its translations are not written yet — which
+        // the template's own strings hid, because they all arrived translated.
         informational +=
             setOf(
                 "AndroidGradlePluginVersion",
                 "GradleDependency",
+                "MissingTranslation",
                 "NewerVersionAvailable",
                 "OldTargetApi",
             )
