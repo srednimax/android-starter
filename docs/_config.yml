@@ -1,7 +1,7 @@
 # GitHub Pages config for the docs/ folder.
 #
 # It exists for two reasons: Google Play requires a *hosted* privacy policy URL and the app has no server
-# by design (ADR-0011), and Play's listing needs a Website to point at. Pages serves both off the
+# by design (CLAUDE.md, *On-device storage only*), and Play's listing needs a Website to point at. Pages serves both off the
 # already-public repo for nothing — privacy-policy.md and index.md, the site root.
 #
 # Front matter does NOT decide what is published. GitHub Pages injects default front matter, so *every*

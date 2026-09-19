@@ -105,7 +105,7 @@ fun Context.openAppNotificationSettings() {
 
 /**
  * One channel's **own** page in Android's settings — where an importance that has been lowered can
- * be raised back up, which is the only place it can be (9b).
+ * be raised back up, which is the only place it can be.
  *
  * A separate way in from [openAppNotificationSettings] rather than a reuse of it, because the fix is
  * a different control: the app-wide switch lives on the app's page, the per-kind level lives on a

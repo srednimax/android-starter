@@ -13,8 +13,8 @@ import java.io.File
  * directly, and the enum is what the Settings row iterates. So the duplication is forced, and the
  * failure it invites is silent — a `values-pl/` folder plus a `locales_config` entry with no
  * [AppLanguage] entry ships a translation the in-app switcher cannot reach, and the reverse offers
- * a language the system will not honour. Both are found at 3g, in the week the translation lands,
- * which is the worst possible week to find them.
+ * a language the system will not honour. Both would otherwise be found by hand, in the week the
+ * translation lands, which is the worst possible week to find them.
  *
  * Reads the resource off disk rather than through `R`, deliberately: an XML resource is not
  * readable from a JVM unit test without Robolectric, and the file is the artifact whose contents

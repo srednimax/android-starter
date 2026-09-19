@@ -10,7 +10,8 @@ import android.provider.Settings
 /**
  * Whether this app may place an **exact** alarm right now.
  *
- * `SCHEDULE_EXACT_ALARM` is in the manifest and `USE_EXACT_ALARM` deliberately is not (ADR-0009):
+ * `SCHEDULE_EXACT_ALARM` is in the manifest and `USE_EXACT_ALARM` deliberately is not (ADR-0003,
+ * and `scripts/aab-permissions.py` forbids it in the artifact):
  * the latter is auto-granted and never revoked, but Play permits it only for apps whose core
  * function is an alarm clock or a calendar, and few apps' is.
  * The one we do declare is **denied by default** at `targetSdk` 36, so nothing here assumes it.

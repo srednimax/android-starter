@@ -9,7 +9,7 @@
     exports/ holds a manual backup zip on its way to the share sheet (ADR-0005). Cache, deliberately:
     a share the owner abandons is reclaimed by the OS rather than doubling the app's footprint.
 
-    preserved/ holds ADR-0007's pre-wipe database copies and ADR-0005's pre-restore snapshots, and is
+    preserved/ holds ADR-0001's pre-wipe database copies and ADR-0005's pre-restore snapshots, and is
     shared only on the owner's own explicit "share" tap — a copy they cannot get off the phone is
     only marginally better than no copy at all. Neither the live database nor the media directories
     are listed here.

@@ -69,11 +69,11 @@ fun Context.hasAutostartSettings(): Boolean = autostartIntent().resolveActivity(
 /**
  * Opens Xiaomi's autostart manager, and that is the end of the app's involvement.
  *
- * **Offered once and claimed never** (ADR-0003's amendment). Launching this returns no result and
- * the setting has no public state, so the app cannot know afterwards what the user did — and a
- * checkbox asking them to confirm would have the app repeating the user's guess back to them as its
- * own assurance, which is this ADR's central hazard sourced from a new place. What stands behind the
- * claim instead is 4g's overnight-Doze run on the real device.
+ * **Offered once and claimed never** (ADR-0003). Launching this returns no result and the setting
+ * has no public state, so the app cannot know afterwards what the user did — and a checkbox asking
+ * them to confirm would have the app repeating the user's guess back to them as its own assurance,
+ * which is that ADR's central hazard sourced from a new place. What stands behind the claim instead
+ * is an overnight Doze run on a real device (`scripts/doze-capture.sh`, `scripts/device-gate.py`).
  */
 fun Context.openAutostartSettings(): Boolean =
     startActivitySafely(autostartIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -87,8 +87,8 @@ private fun autostartIntent(): Intent =
  * An OEM screen that is present but not exported to us throws `SecurityException`, which is the same
  * outcome from here as it not being there at all.
  *
- * `internal` rather than private since 5a: [openExactAlarmSettings] walks the same fallback list for
- * the same reason, and two copies of a three-line try/catch is how one of them quietly stops
+ * `internal` rather than private: [openExactAlarmSettings] walks the same fallback list for the
+ * same reason, and two copies of a three-line try/catch is how one of them quietly stops
  * catching something.
  */
 internal fun Context.startActivitySafely(intent: Intent): Boolean =
