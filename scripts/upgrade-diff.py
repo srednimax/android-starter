@@ -6,10 +6,10 @@
 This is the reading half of the standing schema gate's item 5 — "an actual
 upgrade watched on the phone" (docs/DOD.md) — and it exists because the Play
 install cannot be read any other way. A release build is not debuggable, so
-`adb shell run-as <pkg>` is refused and `app.db` cannot be pulled. The app's
+`adb shell run-as <pkg>` is refused and the database cannot be pulled. The app's
 own backup export is the only route to those rows, and it is a faithful one:
 the archive carries the *raw* database, and BackupExporter checkpoints the WAL
-before it zips (verified at v1.0.0, not just on main).
+before it zips (verified against a shipped build, not just on main).
 
 What it asserts, in the order the failures actually happen:
 
@@ -20,21 +20,20 @@ What it asserts, in the order the failures actually happen:
   3. Every row of every surviving table is still there, compared on the
      columns the two schemas share. Added columns are not a loss; a dropped
      column is not compared, which is why 4 exists.
-  4. Every column a migration takes off `observations` arrived in the table
-     that replaced it — the two droppings columns under MIGRATION_6_7, and
-     `trayPhotoPath` under MIGRATION_7_8. A generic column diff cannot see any
-     of them — the column is gone from one side of the comparison by definition
-     — and they are the only places in the whole 1.0.0 -> 1.9 chain where an
-     owner's data physically moves between tables.
+  4. Every column a migration *moves* off a table arrived in the table that
+     replaced it — the entries in COLUMN_MOVES below, empty until your first
+     migration moves one. A generic column diff cannot see any of them — the
+     column is gone from one side of the comparison by definition — so each one
+     is declared by hand, in the same commit as the migration that moves it.
   5. Media files survived. "An update never loses an owner's data" is not
      only about rows.
 
-The cascade trap is why 3 matters more than it looks. MIGRATION_6_7 rebuilds
-`observations` by create-copy-drop-rename, and `DROP TABLE observations` fires
-`observation_symptoms`' ON DELETE CASCADE. Room's runMigrationsAndValidate
-would pass happily on the wreckage: a database whose every symptom tick has
-been cascaded away still has exactly the right *schema*. Only a row count can
-tell you, and only against a before-image.
+The cascade trap is why 3 matters more than it looks. A migration that rebuilds
+a parent table by create-copy-drop-rename fires every child table's ON DELETE
+CASCADE at the `DROP TABLE`. Room's runMigrationsAndValidate passes happily on the
+wreckage: a database whose every child row has been cascaded away still has
+exactly the right *schema*. The app this template came from met exactly this.
+Only a row count can tell you, and only against a before-image.
 
 Exits non-zero if anything was lost. Prints and exits 0 if nothing was.
 """
@@ -46,31 +45,38 @@ import sqlite3
 import sys
 import tempfile
 import zipfile
+from pathlib import Path
 
-DB_ENTRY = "database/app.db"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import project  # noqa: E402  — the path insert above has to come first
+
+# Where BackupExporter puts the database inside the zip — `DATABASE_ENTRY` in
+# data/backup/BackupManifest.kt. Derived from project.py rather than written out,
+# because bootstrap.py renames the database and a literal "app.db" here would then
+# refuse every real backup as "not one of this app's".
+DB_ENTRY = f"database/{project.DATABASE_FILE}"
 
 # Room's bookkeeping table carries the schema identity hash, which is *supposed*
 # to differ between two versions. Comparing it would fail every honest upgrade.
 IGNORED_TABLES = {"room_master_table", "android_metadata", "sqlite_sequence"}
 
-# The non-generic assertions: every place a migration *moved* a column off
-# `observations` rather than dropping it. Check 3 is blind to these by
-# definition — the column is gone from one side of the comparison, so a generic
-# diff has nothing to compare — and they are the only places in the whole
-# 1.0.0 -> 1.9 chain where an owner's data physically changes tables.
+# The non-generic assertions: every place a migration *moved* a column off a
+# table rather than dropping it. Check 3 is blind to these by definition — the
+# column is gone from one side of the comparison, so a generic diff has nothing
+# to compare. Empty until a migration moves one; add the entry in the same
+# commit as the migration.
 #
-# (before_column, after_table, after_value_column, migration)
-COLUMN_MOVES = [
-    # The join tables store the same enum *names*, since the house rule is that
-    # enums are stored by name and never by ordinal, so a value migrates as
-    # itself with no translation.
-    ("droppingsForm", "observation_droppings_appearance", "value", "MIGRATION_6_7"),
-    ("droppingsSize", "observation_droppings_sizes", "value", "MIGRATION_6_7"),
-    # One tray photo path became a table holding up to six of them (phase 10,
-    # 10d). The old single path has to be *among* what landed, which is the same
-    # shape as the multi-valued droppings above rather than a new kind of check.
-    ("trayPhotoPath", "observation_photos", "path", "MIGRATION_7_8"),
-]
+# (source_table, before_column, after_table, after_key_column, after_value_column, migration)
+#
+# The typical shape is a single-valued column becoming a child table — one photo
+# path becoming a table of photos — so the old value must be *among* what landed
+# under the same parent id, not equal to all of it. For example:
+#
+#     ("items", "photoPath", "item_photos", "itemId", "path", "MIGRATION_2_3"),
+#
+# Enums are stored by name and never by ordinal (CLAUDE.md), so a value migrates
+# as itself with no translation, and the comparison is plain equality.
+COLUMN_MOVES: list[tuple[str, str, str, str, str, str]] = []
 
 
 def fail(message):
@@ -79,12 +85,12 @@ def fail(message):
 
 
 def extract_db(zip_path, into):
-    """Pull database/app.db out of a backup, WAL included if one is there.
+    """Pull the database out of a backup, WAL included if one is there.
 
     BackupExporter checkpoints before zipping, so a well-formed archive has no
     -wal member at all. The handling is here anyway because a *stale* read is
-    the failure that looks exactly like a pass: 9d watched a deleted row read
-    back as present from a app.db pulled without its sibling.
+    the failure that looks exactly like a pass: a deleted row once read back as
+    present from a database pulled without its -wal sibling.
     """
     try:
         archive = zipfile.ZipFile(zip_path)
@@ -98,7 +104,7 @@ def extract_db(zip_path, into):
         if DB_ENTRY not in names:
             fail(f"{zip_path} has no {DB_ENTRY} — is it one of this app's backups?")
 
-        target = os.path.join(into, "app.db")
+        target = os.path.join(into, project.DATABASE_FILE)
         with archive.open(DB_ENTRY) as src, open(target, "wb") as dst:
             shutil.copyfileobj(src, dst)
 
@@ -243,38 +249,40 @@ def main():
 
         # 4 — the columns that moved rather than vanished.
         print()
-        was_there = columns(before, "observations") if "observations" in t_before else []
-        # Which moves this particular upgrade is even on the hook for: a 7 -> 8
-        # jump never had a droppingsForm to move, and a 6 -> 7 one never had a
-        # trayPhotoPath. Asking the before image is what tells them apart.
-        due = [move for move in COLUMN_MOVES if move[0] in was_there]
+        # Which moves this particular upgrade is even on the hook for: a jump that
+        # starts after a move never had the old column to move. Asking the before
+        # image is what tells them apart.
+        due = [
+            move for move in COLUMN_MOVES
+            if move[0] in t_before and move[1] in columns(before, move[0])
+        ]
 
-        for column, destination, value_column, migration in due:
+        for source, column, destination, key_column, value_column, migration in due:
             if destination not in t_after:
                 losses.append(
-                    f"`observations.{column}` was dropped and `{destination}` does not exist"
+                    f"`{source}.{column}` was dropped and `{destination}` does not exist"
                 )
                 continue
 
             staged = before.execute(
-                f'SELECT id, "{column}" FROM observations WHERE "{column}" IS NOT NULL'
+                f'SELECT id, "{column}" FROM "{source}" WHERE "{column}" IS NOT NULL'
             ).fetchall()
 
             landed = collections.Counter(
                 after.execute(
-                    f'SELECT observationId, "{value_column}" FROM "{destination}"'
+                    f'SELECT "{key_column}", "{value_column}" FROM "{destination}"'
                 ).fetchall()
             )
-            # The destinations are all multi-valued, so a single old value must be
+            # A destination may be multi-valued, so a single old value must be
             # *among* what landed, not equal to all of it.
             lost = [pair for pair in staged if landed[pair] == 0]
 
             status = "ok  " if not lost else "LOST"
-            print(f"  {status} observations.{column:18} {len(staged):5} value(s) "
+            print(f"  {status} {source}.{column:18} {len(staged):5} value(s) "
                   f"-> {destination}")
             if lost:
                 losses.append(
-                    f"{len(lost)} value(s) of `observations.{column}` did not arrive in "
+                    f"{len(lost)} value(s) of `{source}.{column}` did not arrive in "
                     f"`{destination}` ({migration}); first: {lost[0]!r}"
                 )
 

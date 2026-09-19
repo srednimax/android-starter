@@ -6,8 +6,8 @@
 Why this exists: an AAB stores `base/manifest/AndroidManifest.xml` in aapt2's
 *protobuf* encoding, not the binary XML that `aapt2 dump xmltree` reads. Pointed
 at a bundle it prints nothing and exits 0 — it does not fail, it just says
-nothing, which is how PLAN.md 3a shipped a signed artifact carrying versionCode
-1 without noticing. So the readback has to decode protobuf, and it has to assert
+nothing, which is how a signed artifact carrying versionCode 1 once shipped
+without anyone noticing. So the readback has to decode protobuf, and it has to assert
 rather than print.
 
 Exits non-zero if the bundle's versionCode disagrees with `git rev-list --count

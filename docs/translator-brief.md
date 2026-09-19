@@ -140,3 +140,29 @@ without the number, and `quantity="one"` in Polish means *exactly* one, not "the
    check: it parses, it carries its arguments, and it says something the app no longer means.
 4. The language is offered to users only when its tag is added to `res/xml/locales_config.xml` and
    `AppLanguage`. Until then it exists and reaches nobody, which is the correct state for a draft.
+
+## 8. What a language ships on
+
+**An audit against §2, a look at it on a phone, and a route back — a native speaker's read-through
+when you can get one, but not as the gate.** The first app built from this template promised a
+native read-through per language and shipped nine languages; seven reviewers never materialised, and
+the promise had one outcome — mechanically green drafts sitting unshipped while they rotted against
+every English string added after them. A read-through was doing two jobs. *Fluency* needs a native
+speaker; the rules that outrank fluency (§2) are a bounded checklist answerable from this brief and
+the string. So the second half is the gate, and the first half gets a channel after shipping.
+
+Before a language goes into `locales_config.xml`:
+
+- **Every string that §2 governs is read against §2**, in that language. Nothing softened, sharpened
+  or promised beyond what the app can know.
+- **The §5 table is checked for consistency**, because a term translated two ways is the failure that
+  makes an app look sloppy in a way no test catches.
+- **It is compiled, installed and looked at.** A staged draft has never met `aapt2`: clipped labels and
+  lint's plural warnings are invisible until it does, and neither needs a native speaker to see.
+
+After it ships, a way to report a bad string — a row under the language picker that opens a mail is
+enough — is how fluency findings arrive, as ordinary bug reports. **What a report must not do is talk
+the app back across §2**: the reporter has the fluency, and this file has the reasoning.
+
+If this is not your policy, replace this section *and* say so in ADR-0004 — `translation-gate.py`
+cites it as the thing no script stands in for.

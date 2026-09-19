@@ -10,7 +10,7 @@ Run by CI on every pull request, and worth running by hand while you work:
 be an assertion in `TranslationTest`, which made a missing translation a red build the moment the
 English string was written. That is the right rule at the wrong boundary: at nine languages it puts
 every feature branch behind a translation round, so copy gets translated against the draft wording
-and then again after review reworded it — nine times, for nothing. ADR-0013's promise is about what
+and then again after review reworded it — nine times, for nothing. ADR-0004's promise is about what
 *ships*, not about what a working tree looks like on a Tuesday.
 
 So the boundary moved rather than the rule: **free while you work, strict before it merges.**
@@ -38,8 +38,9 @@ Drafts staged in `translations/<tag>/` are **reported and never gated**. A langu
 one number nothing else prints, since `TranslationTest` checks a draft's correctness and says
 nothing about how much of it exists yet.
 
-What it deliberately does not check: whether the translation is any *good*. A language ships on a
-native speaker's read-through (`docs/translator-brief.md` §8), and no script stands in for that.
+What it deliberately does not check: whether the translation is any *good*. A language ships on an
+audit against the brief's rules, a look at it on a phone and a route back for fluency reports
+(`docs/translator-brief.md` §8), and no script stands in for any of that: this one counts resources.
 """
 
 from __future__ import annotations
@@ -120,7 +121,7 @@ def shipped_locales() -> list[str]:
 
 
 def staged_locales() -> list[str]:
-    """Drafts waiting outside `res/`, one directory per BCP-47 tag (Phase 8)."""
+    """Drafts waiting outside `res/`, one directory per BCP-47 tag."""
     if not STAGED.is_dir():
         return []
     return sorted(child.name for child in STAGED.iterdir() if (child / "strings.xml").is_file())
@@ -266,7 +267,7 @@ def main() -> int:
         return 0
 
     print(
-        "\nA language ships complete or not at all (ADR-0013). Draft against "
+        "\nA language ships complete or not at all (ADR-0004). Draft against "
         "docs/translator-brief.md, and use --report while the work is still moving.",
         file=stream,
     )

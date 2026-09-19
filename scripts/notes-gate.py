@@ -12,8 +12,8 @@ takes the newest `### x.y.z` under `## Release notes` in docs/store-listing.md, 
 consults it. So when release-please bumps `versionName` and the notes stay where they were, the
 mismatch is silent and the *previous* release's text ships attached to the new build.
 
-That is not hypothetical. 1.9.0 reached production on 2026-08-26 carrying 1.8.0's notes — text that
-predates the timeline, multi-photo trays, kilogram entry and the light/dark override. Play does not
+That is not hypothetical. In the app this template was extracted from, 1.9.0 reached production
+carrying 1.8.0's notes — text that predated four features users could now see. Play does not
 allow release notes to be edited on a live production release, so the correction could not be made
 where it was needed; it had to wait for the next upload. A gate is cheaper than that.
 
