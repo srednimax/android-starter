@@ -1,0 +1,156 @@
+# Play Console — App content answers
+
+The answers this app gave in the Console's **App content** pages, what each one rests on, and **the
+fact that would change it**. The Console shows what was answered but never why, and Play asks again:
+when the app changes, when the questionnaire changes, and once a year. A re-declaration made from
+memory a year from now is how a true answer turns false.
+
+<!--
+    A template with real structure. Every section below is a page the Console will make you answer
+    before a closed release, and the answers are pre-filled for the template *as shipped*: no
+    network, no account, no ads, reminders and photos on the device. Delete what your app does not
+    have, re-reason what it adds, and date every answer the day you give it in the Console.
+
+    The first app built from this template wrote this file in its fifth phase, after `DOD.md` had
+    carried it as owed since before the first upload. Writing it while you fill in the Console is
+    cheaper: the reasons are in front of you then, and gone a week later.
+-->
+
+Two rules keep this file honest:
+
+- **The privacy policy and the Data safety form describe the same facts to two audiences**, and Play
+  cross-checks them. [`privacy-policy.md`](privacy-policy.md) and this file move in the same commit.
+  A change to one without the other is the drift this file exists to stop.
+- **A claim about permissions is read off the built artifact, never off the manifest.** A dependency
+  can merge a permission the source never declared, and that is invisible from `AndroidManifest.xml`.
+  `scripts/aab-permissions.py` is the reader, it runs before every upload, and its `EXPECTED` and
+  `FORBIDDEN` tables are this section's twin — edit them together.
+
+## What the artifact carries
+
+Read at **versionCode _, versionName _** by `publish-play.yml`'s verify step on _<date>_:
+
+> _paste the summary line `aab-permissions.py` prints_
+
+| Permission | Whose | What it is for | Console consequence |
+| --- | --- | --- | --- |
+| `POST_NOTIFICATIONS` | ours | reminder notifications, asked from a screen that explains them | none |
+| `RECEIVE_BOOT_COMPLETED` | ours | `BootReceiver` re-arms the sweep after a restart | none: normal, install-time |
+| `SCHEDULE_EXACT_ALARM` | ours | a reminder that must land on its minute (ADR-0003) | **none today, but watch it**: Play restricts exact alarms, and `USE_EXACT_ALARM` is forbidden outright |
+| `WAKE_LOCK` | WorkManager | the worker's own wake lock | none |
+| `ACCESS_NETWORK_STATE` | WorkManager | reads connectivity for job constraints; opens nothing | none, but a reviewer may ask why an app with no network reads it — this row is the answer |
+| `FOREGROUND_SERVICE` | WorkManager | its `SystemForegroundService`, never started by this app | none while nothing declares a foreground service *type* |
+| `…DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | AndroidX | its own non-exported receivers, signature-level | none: not user-visible |
+
+**Forbidden, and asserted absent**: `INTERNET`, `AD_ID`, `QUERY_ALL_PACKAGES`,
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `CAMERA`, `USE_EXACT_ALARM`. The first two are what the Data
+safety and advertising-ID answers rest on.
+
+**Two asks are not permissions and appear on no Play list**: the battery-optimisation exemption and
+Xiaomi's autostart. Both are hand-offs to Settings. They need no declaration, and the privacy policy
+names them anyway, because a user sent to two Settings screens should find both explained.
+
+---
+
+## Ads
+
+**No.** Answered _<date>_.
+
+Would change: any ad SDK, ever. `AD_ID` absent from the artifact is the check that would catch one
+arriving through a dependency.
+
+## App access
+
+**All functionality is available without special access.** Answered _<date>_.
+
+There is no account and no sign-in. Would change: a feature behind a login.
+
+## Content rating
+
+**The IARC questionnaire.** Answered _<date>_, category _<category>_, rating contact _<email>_.
+
+Would change: user-generated content, communication between users, or a link out to anything that
+has either. A support `mailto:` hand-off is not user-to-user communication — it opens the user's own
+mail app, addressed to the developer — and a rate row opens Play's own listing, whose reviews are
+Play's surface rather than the app's.
+
+## Target audience and content
+
+**18 and over** _(or your answer)_. Answered _<date>_.
+
+Would change: lowering it. Any age band under 18 brings in the Families policy and its design and
+SDK requirements.
+
+## Government, financial and health features
+
+**No to all three** _(or your answer)_. Answered _<date>_.
+
+Health is the one to guard, for an app anywhere near wellbeing. **Keep health claims out of the
+listing, the site and the tags** — Play's enforcement has treated a linked page as part of the
+listing. Would change: copy or a tag that sells the app as good for you.
+
+## Data safety
+
+**No data collected. No data shared.** Answered _<date>_ against versionCode _.
+
+Play's definitions, from its Data safety help page (support.google.com, answer 10787469) — re-read
+them at each re-declaration rather than trusting this quote:
+
+> "'Collect' means transmitting data from your app off a user's device."
+>
+> "User data accessed by your app that is only processed locally on the user's device and not sent
+> off device does **not** need to be disclosed."
+
+The answer rests on one fact per route data could take:
+
+1. **The app cannot transmit anything.** `INTERNET` is absent from the artifact, and
+   `aab-permissions.py` fails the upload if it ever appears. This one fact is most of the answer.
+2. **Photos are processed only on the device.** Picked or taken, re-encoded by `media/MediaFiles.kt`
+   with their metadata — GPS included — stripped, and stored in the app's private storage.
+3. **Auto Backup is still "no data collected".** The platform moves the user's backup to the user's
+   own Google Drive; the developer never sees it. That is Android transmitting the user's backup, not
+   the app transmitting to the developer. ⚠ Every file the backup carries lands on the user's *next*
+   phone too — see ADR-0005 for what is included and why.
+4. **A support mail is still "no data collected", and the reason is the definition rather than an
+   exemption.** A `mailto:` hands a draft to **another app**; the user reads it, can edit every line,
+   and sends it from their own mail client, or does not. ⚠ **Do not write "Play exempts support
+   flows" in a re-declaration.** The help page has no such exemption; the claim is true because of
+   what "collect" means, and that is the reason to give.
+
+Would change any of it:
+
+- **`INTERNET` on the artifact**, from our code or a dependency. Every answer here becomes a question.
+- **Anything the app sends by itself**, such as crash reporting or analytics. There is none today.
+- **Location of any kind**, including through a photo's metadata surviving into storage or a backup.
+
+## Advertising ID
+
+**No.** The artifact carries no `com.google.android.gms.permission.AD_ID`, and `aab-permissions.py`
+forbids it. Answered _<date>_.
+
+## Foreground service permissions
+
+**None declared** as shipped: WorkManager merges `FOREGROUND_SERVICE` but no foreground service
+*type*, and nothing here starts one. If the app gains a foreground service, this section records the
+type, the `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` text if it is `specialUse`, and the three answers the
+declaration asks for: what the user sees, why it cannot wait, and why no named type fits.
+
+## Store settings (not App content, recorded here because it is asked for the same reason)
+
+- **Category:** _<category>_, and why not the obvious neighbour.
+- **Tags:** _<tags>_.
+- **Contact email:** _<address>_, public on the listing.
+- **Privacy policy:** `https://<owner>.github.io/<repo>/privacy-policy.html`, served from `docs/` by
+  Pages. It updates on a merge to `main`, with no release, which is why it has to be right before the
+  app it describes ships rather than after.
+
+---
+
+## When Play asks again
+
+1. Run `python3 scripts/aab-permissions.py` against the newest bundle, and compare its table with the
+   one above. A new row is a new question.
+2. Read `docs/privacy-policy.md` against the answers here. If one has moved, both move, in one commit.
+3. Copy any value this file does not hold while the Console is open — a category, a date, a
+   declaration's exact wording — so the next re-declaration can compare against it.
+4. Re-date the sections you re-answered.

@@ -2,7 +2,7 @@
 # Translation gate, run early and advisory only.
 #
 # The gate is a *merge* boundary, not a work boundary — "free while you work, strict
-# before it merges" (phase-8.md). A branch that still owes translations is a perfectly
+# before it merges" (scripts/translation-gate.py's docstring). A branch that still owes translations is a perfectly
 # ordinary work-in-progress, and that is the entire reason completeness left
 # TranslationTest in the first place. So this hook never blocks a push. It only tells
 # you now what CI would tell you in four minutes, while the strings are still in your

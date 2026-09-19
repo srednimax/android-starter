@@ -3,23 +3,25 @@
 
     python3 scripts/aab-reflection.py [path/to/app-release.aab]
 
-Why this exists: at 10c, turning R8 on **silently disabled the guided document
-scanner**, and every check this repo had passed the artifact. It did not crash —
-`MlKitDocumentScanner` catches everything and falls back to the plain camera by
-design, so the failure looked exactly like a device without Play services. The
-cause was `NoSuchMethodException: CommonComponentRegistrar.<init> []`: ML Kit
-names its registrar inside an `<meta-data>` **key**, `aapt_rules.txt` reads
-attributes and not meta-data keys, so R8 saw a class nobody constructs and shrank
-the no-arg constructor away while keeping the class.
+Why this exists: in the app this template was extracted from, turning R8 on
+**silently disabled an ML Kit document scanner**, and every check that repo had
+passed the artifact. It did not crash — the scanner wrapper caught everything and
+fell back to the plain camera by design, so the failure looked exactly like a
+device without Play services. The cause was `NoSuchMethodException:
+CommonComponentRegistrar.<init> []`: ML Kit names its registrar inside a
+`<meta-data>` **key**, `aapt_rules.txt` reads attributes and not meta-data keys,
+so R8 saw a class nobody constructs and shrank the no-arg constructor away while
+keeping the class. The template has no ML Kit; the hazard is any library that
+discovers classes this way.
 
 That is the shape of the hazard: a class named only in the manifest, loaded by
 `Class.forName` and built with a no-arg constructor, where losing it costs a
-feature rather than raising anything at build time. `proguard-rules.pro` now
-carries the keep rule, but a keep rule is a statement of intent — this reads the
-artifact and checks the intent was met.
+feature rather than raising anything at build time. A keep rule in
+`proguard-rules.pro` is the fix, but a keep rule is a statement of intent — this
+reads the artifact and checks the intent was met.
 
-**What identifies one is the shape, not the class name.** All three frameworks
-doing this here write `name` = the class to instantiate and `value` = who will
+**What identifies one is the shape, not the class name.** Every framework known
+to do this writes `name` = the class to instantiate and `value` = who will
 instantiate it, and two of them namespace the key — Firebase's registrar arrives
 as `com.google.firebase.components:<class>`. So the markers live in MARKERS below
 and the class names are read out of the artifact, rather than being kept in a
@@ -27,8 +29,8 @@ list here that would go stale on the next dependency bump.
 
 **mapping.txt cannot answer this.** It rides inside the AAB, but R8 writes a bare
 `Foo -> Foo:` line for a class it kept unrenamed and lists no members at all —
-checked against this artifact, where `CommonComponentRegistrar` has exactly that
-one line while its constructor is present in the dex. Absence from mapping.txt is
+checked against a real artifact, where `CommonComponentRegistrar` had exactly that
+one line while its constructor was present in the dex. Absence from mapping.txt is
 not absence from the artifact, so the dex is what gets read.
 
 Exits non-zero if a named class is missing from the dex, or is there without a
@@ -40,14 +42,16 @@ import sys
 import zipfile
 
 # The <meta-data> values that mean "the name attribute is a class I will construct
-# reflectively". Each is here because this artifact carries it; adding a library
-# that discovers classes its own way means adding its marker.
+# reflectively". androidx.startup is what the template's artifact carries; the other
+# two are kept because they are the ones that bit — a marker for a library you do not
+# ship matches nothing and costs nothing. Adding a library that discovers classes its
+# own way means adding its marker.
 MARKERS = {
     "com.google.firebase.components.ComponentRegistrar": "Firebase component discovery — ML Kit's registrars",
     "androidx.startup": "androidx.startup — App Startup initializers",
     # Not a marker word like the two above but the backend's name, which is why this
-    # one is matched on the key's `backend:` namespace instead. Same dependency chain
-    # that merged INTERNET at 5g, discovered the same reflective way.
+    # one is matched on the key's `backend:` namespace instead. The same dependency
+    # chain that once merged INTERNET, discovered the same reflective way.
     "cct": "com.google.android.datatransport — a backend factory, built by name",
 }
 

@@ -14,11 +14,17 @@ remembered.
 For each step between the base branch's schema version and this branch's, it requires:
 
   1. `app/schemas/<version>.json` — the exported shape, committed, because every later migration is
-     written from it (ADR-0007).
+     written from it (ADR-0001).
   2. `MIGRATION_<from>_<to>` in `Migrations.kt`, *and* its presence in `APP_MIGRATIONS` — a
      migration that exists but is not registered is not a migration Room will ever run.
   3. `SchemaGateTest` asserting the new version, so the launch gate is proven to let the upgrade
-     through rather than showing the refusal screen (ADR-0023's Phase 7.5 amendment).
+     through rather than showing the refusal screen (ADR-0001's launch gate).
+
+**An app with no database passes.** Settings-only apps are a legitimate shape — no
+`data/AppDatabase.kt`, nothing in DataStore that an update can strand, because an unknown key is
+ignored and a missing one falls back to its declared default. The gate says so and exits 0 rather
+than crashing on the missing file, because CI runs it on every branch. Add a table back and the gate
+comes back with it, unchanged.
 
 What it deliberately does not check: that the migration is *correct*. That is what the committed
 backup fixtures and the instrumented `MigrationTestHelper` runs are for, and no script can stand in
@@ -64,6 +70,10 @@ def version_at(ref: str) -> int | None:
 def main() -> int:
     base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
 
+    if not project.HAS_DATABASE:
+        print(f"schema-gate: no {DATABASE.relative_to(ROOT)} in this project — no database, nothing to gate.")
+        return 0
+
     current = version_in(DATABASE.read_text())
     if current is None:
         print(f"schema-gate: could not read {project.SCHEMA_VERSION_CONST} from {DATABASE}", file=sys.stderr)
@@ -102,12 +112,12 @@ def main() -> int:
 
     # Room exports under a directory named for the database class, so glob rather than assume.
     if not list(SCHEMAS.glob(f"*/{current}.json")):
-        problems.append(f"app/schemas/*/{current}.json is missing — export and commit it (ADR-0007)")
+        problems.append(f"app/schemas/*/{current}.json is missing — export and commit it (ADR-0001)")
 
     if f"appSchemaVersion = {current}" not in gate_test:
         problems.append(
             f"SchemaGateTest does not assert appSchemaVersion = {current} — the launch gate is "
-            "unproven for this bump, which is exactly how 1.5 nearly shipped a refusal screen"
+            "unproven for this bump, and every migration test walks straight past that gate (ADR-0001)"
         )
 
     if problems:
@@ -115,8 +125,8 @@ def main() -> int:
         for problem in problems:
             print(f"  ✗ {problem}", file=sys.stderr)
         print(
-            "\nAn update must migrate an existing install without losing anything. See ADR-0007, "
-            "ADR-0023 and docs/DOD.md's standing schema gate.",
+            "\nAn update must migrate an existing install without losing anything. See ADR-0001 "
+            "and docs/DOD.md's standing schema gate.",
             file=sys.stderr,
         )
         return 1

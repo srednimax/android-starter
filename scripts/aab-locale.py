@@ -5,16 +5,16 @@
 
 With no locale named it checks every language `locales_config.xml` ships.
 
-Why this exists: 1.0.1 was the release that fixed *Polish not reaching a shipped
-artifact at all*. `values-pl/strings.xml` was complete, `PolishTranslationTest`
-was green, and the build still went up without the translations. Every check in
-that chain read the source; nothing read the artifact. So this one reads the
-artifact, and it asserts rather than prints — the same lesson as
-`scripts/aab-version.py`, applied to the other thing 3a got wrong.
+Why this exists: in the app this template was extracted from, a patch release
+had to fix *Polish not reaching a shipped artifact at all*. `values-pl/strings.xml`
+was complete, the translation test was green, and the build still went up without
+the translations. Every check in that chain read the source; nothing read the
+artifact. So this one reads the artifact, and it asserts rather than prints — the
+same lesson as `scripts/aab-version.py`, applied to a different field.
 
 An AAB keeps every locale's strings in `base/resources.pb`; Play splits them into
 per-language APKs at install time. So the bytes are there to look for, and their
-absence is exactly the failure 1.0.1 shipped.
+absence is exactly the failure that patch release had to fix.
 
 Exits non-zero if any translated string is missing from the resource table.
 """
@@ -92,7 +92,7 @@ def qualifier(tag):
 def shipped_locales():
     """Every translated locale, read from the file the language picker itself reads.
 
-    A hardcoded `pl` was the whole list when this script was written for 1.0.1. At nine it is how
+    A hardcoded `pl` was the whole list when this script was first written. At nine it is how
     eight languages reach the tracks unchecked — and "a locale did not reach the artifact" is the
     one failure this script exists to catch. Read rather than repeated, so a tenth language is one
     line of XML here as everywhere else.
