@@ -21,11 +21,35 @@ Screenshots are copied from `art/play-screenshots/`, whose filenames carry both 
 locale — `1_home-pl.png`. The locale suffix is stripped on the way in, because supply already knows
 the language from the directory it is putting the file in.
 
+⚠ **A blank field is written as no file at all, never as an empty one.** An empty file is a value:
+supply reads it and asks Play to store `""`, and Play refuses the whole edit - *"This app has no short
+description (promotional text) for language pl-PL"*, measured by a validate-only promotion of an
+app built from this template. A missing file leaves that field as Play already has it.
+
+⚠ **Omitting the file is not enough on its own, and `--strict` is the part that protects Play.**
+supply 2.240.1 fetches the listing for *every locale directory* - an empty one when Play has never
+had that locale - fills in whichever `.txt` files it finds, and saves it regardless. A locale's
+directory always exists, because its changelog lives in it. So a locale Play has never had, with its
+descriptions omitted, still arrives as a new listing with no short description, and is refused the
+same way. Two things keep that from reaching Play, one per path:
+
+- **The run that uploads the listing** passes `--strict`, which refuses an incomplete locale here,
+  before supply starts.
+- **Every other run** passes supply `--skip_upload_metadata`, so it never saves a listing at all and
+  an incomplete locale is harmless. Those runs only warn, because a release must not stop over copy
+  it is not uploading.
+
+"Incomplete" means one rule however it is spelled: a field whose fenced block is blank, a field whose
+heading is missing, or a shipped language with no section here at all.
+
 Usage:
     python3 scripts/play-metadata.py --out fastlane/metadata/android
     python3 scripts/play-metadata.py --out DIR --version-code 406
+    python3 scripts/play-metadata.py --out DIR --strict   # the listing-upload run
 
-Exits non-zero when a field is over Play's limit or a shipped language has no listing at all.
+Exits non-zero when a field is over Play's limit, and - with `--strict` - when any shipped language's
+listing is incomplete. Release-note completeness is `play-whatsnew.py`'s, on every path, and is not
+relaxed by anything here.
 """
 
 from __future__ import annotations
@@ -161,6 +185,11 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True, help="fastlane/metadata/android")
     parser.add_argument("--version-code", help="changelog filename; default `git rev-list --count HEAD`")
     parser.add_argument("--release-version", help="which release's notes; default the newest in the document")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="refuse an incomplete listing instead of warning; pass it on the run that uploads the listing",
+    )
     args = parser.parse_args()
 
     text = LISTING.read_text(encoding="utf-8")
@@ -168,34 +197,53 @@ def main() -> int:
     release, notes = whatsnew.parse(text, args.release_version)
     code = args.version_code or version_code()
 
+    # Two kinds of finding. An over-limit field is wrong on every path: the document is broken, and a
+    # later listing run would be refused for it. A gap is only wrong where the listing is uploaded,
+    # which is what --strict says.
     problems = []
+    gaps = []
     for locale, fields in sorted(listings.items()):
         for field, limit in LIMITS.items():
-            if field not in fields:
-                problems.append(f"{locale} has no {field}")
+            if not fields.get(field):
+                gaps.append(f"{locale} has no {field} - no file written, so Play keeps whatever it has")
             elif len(fields[field]) > limit:
                 problems.append(f"{locale} {field} is {len(fields[field])} characters, over Play's {limit}")
     for locale in sorted(whatsnew.shipped_locales() - set(listings)):
-        problems.append(f"{locale} is shipped in the app but has no listing")
+        gaps.append(f"{locale} is shipped in the app but has no listing")
 
     args.out.mkdir(parents=True, exist_ok=True)
     for locale, fields in listings.items():
         directory = args.out / locale
         directory.mkdir(parents=True, exist_ok=True)
         for field, body in fields.items():
-            (directory / f"{field}.txt").write_text(body + "\n", encoding="utf-8")
+            if body:  # a blank is left out rather than written as "" - see the docstring
+                (directory / f"{field}.txt").write_text(body + "\n", encoding="utf-8")
         if locale in notes:
             changelogs = directory / "changelogs"
             changelogs.mkdir(exist_ok=True)
             (changelogs / f"{code}.txt").write_text(notes[locale] + "\n", encoding="utf-8")
 
     shots = copy_screenshots(args.out)
-    print(f"listings: {len(listings)}  notes: {len(notes)} (release {release}, changelog {code}.txt)")
+    complete = sorted(locale for locale, fields in listings.items() if all(fields.get(f) for f in LIMITS))
+    incomplete = sorted(set(listings) - set(complete))
+    print(
+        f"listings: {len(complete)} complete"
+        + (f", {len(incomplete)} incomplete ({', '.join(incomplete)})" if incomplete else "")
+        + f"  notes: {len(notes)} (release {release}, changelog {code}.txt)"
+    )
     print(f"screenshots: {sum(shots.values())} across {len(shots)} locales" if shots else "screenshots: none (art/play-screenshots/ absent — text-only run)")
 
+    for gap in gaps:
+        print(f"{'FAILED' if args.strict else 'WARNING'}: {gap}", file=sys.stderr)
+    if gaps and not args.strict:
+        print(
+            "-- harmless while supply skips the listing; a listing upload must pass --strict, "
+            "because supply saves every locale it has a directory for",
+            file=sys.stderr,
+        )
     for problem in problems:
         print(f"FAILED: {problem}", file=sys.stderr)
-    return 1 if problems else 0
+    return 1 if problems or (gaps and args.strict) else 0
 
 
 if __name__ == "__main__":

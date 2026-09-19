@@ -1,0 +1,252 @@
+name: Publish to Play (closed testing)
+
+# Manual only, like the production workflow and for a different reason. Production is gated because
+# it reaches every owner; this is gated because there is no automatic moment that means "the build on
+# internal is ready for the testers". You decide that, so you trigger it.
+#
+# ⚠ This workflow PROMOTES; it does not build. The artifact it moves to a closed track is the exact
+# one publish-play.yml already put on the internal track — same bytes, same signature, the copy you
+# actually tested. Rebuilding here could not work: versionCode is the commit count, so a rebuild of a
+# released tag reproduces a code Play has already accepted on internal, and Play permanently refuses a
+# *new upload* of a versionCode it has seen. (Two tracks SHARING a versionCode is normal and is
+# exactly what promotion produces — the refusal is about uploading twice, not about the destination.)
+# Nothing is signed here, so no keystore is materialised and none of the four key secrets are read.
+#
+# Why this exists when publish-play-production.yml already offers `alpha` as a destination: the two
+# runs want opposite defaults. Production defaults to a fraction of installs, a dry run and a human
+# approval — every one of which is wrong for a closed test, where a staged rollout means some of the
+# testers do not get the build, and the 14-day window is measured on testers rather than on the
+# release. So this one always promotes to *everyone* on the destination track, and it cannot reach
+# production even with the wrong value typed into the dialog (see the track guard below).
+#
+# ⚠ Closed testing is also the only track that proves an upgrade. An internal-track install demands an
+# uninstall on the device; a closed-track one updates in place. So "an existing owner's install
+# survived the update" can only be shown by a build that arrived through here.
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        # Free text rather than a choice, because Play's *closed* tracks are open-ended: `alpha` is the
+        # one every developer account starts with, and Console's "Create track" button makes more of
+        # them with ids nobody can enumerate here. The guard step is what keeps free text safe — it is
+        # a deny list of the three reserved non-closed tracks, and that list is complete, so anything
+        # passing it is a closed track by construction.
+        description: 'Destination closed track — `alpha` unless you created another one'
+        type: string
+        default: alpha
+      version_code:
+        # Blank is the normal case: the workflow asks Play which build is on internal. Fill it in only
+        # to pin a specific older build.
+        description: 'versionCode to promote — blank asks Play what is on internal'
+        type: string
+        required: false
+      release_version:
+        # ⚠ The one field a promotion from `main` gets wrong in silence. play-metadata.py renders the
+        # *newest* `### x.y.z` under "Release notes" in docs/store-listing.md, which is the right answer
+        # only while the checkout still points at the release being promoted. Promote an older build
+        # after newer notes have merged and the testers are told about a version they do not have —
+        # exactly the failure scripts/notes-gate.py exists to prevent, one ref away. Promote from the
+        # tag, or name the version here.
+        description: 'Which release the notes describe — blank takes the newest in store-listing.md'
+        type: string
+        required: false
+      dry_run:
+        # Defaults to OFF where production's defaults to ON, and the difference is deliberate. A closed
+        # promotion is reversible from the Console (halt the release) and cannot reach anyone who did
+        # not opt in, so making every routine promotion a two-run ritual would only teach the habit of
+        # clicking through the first one. Turn it on for the first run of this workflow, and any time
+        # the dialog holds a value you are unsure of.
+        description: 'Validate against Play, publish nothing'
+        type: boolean
+        default: false
+
+# Its own group rather than one shared with the production promotion. Both open a Play *edit*, and two
+# edits on one app at the same time end with Play refusing the loser's commit — loudly, having
+# published nothing wrong. A rejected commit on a run you can simply repeat is a better failure than a
+# queue that makes a rare workflow wait on an even rarer one.
+concurrency:
+  group: publish-play-closed
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    name: Promote internal to closed testing
+    runs-on: ubuntu-latest
+    # No `environment:` on purpose, and this is the one place this workflow is *less* gated than
+    # production rather than differently gated. An environment with a required reviewer is what stands
+    # between a build and every owner; there is nobody to protect from a build reaching people who
+    # asked to test it. What replaces it is the track guard, which makes the destination provably not
+    # production. ⚠ Adding `environment: production` here would reduce that guarantee to a habit, and
+    # would also hand this workflow that environment's secrets.
+    steps:
+      # A shallow checkout is fine, as in the production workflow: nothing is built and nothing is
+      # derived from history. The versionCode comes from Play, not from `git rev-list --count`. What
+      # *is* read out of the checkout is docs/store-listing.md — see `release_version` above.
+      - uses: actions/checkout@v7
+
+      # Before anything talks to Play. Play has exactly three tracks that are not closed testing —
+      # `production` (every owner), `beta` (open testing, which is public) and `internal` (the source)
+      # — and every other track id is a closed one, because Console's "Create track" only makes those.
+      # So a deny list of three is complete, and this workflow structurally cannot publish to the
+      # public even when the dialog is filled in wrong.
+      #
+      # Inputs arrive through `env` rather than `${{ }}` inside the script, and the version fields are
+      # checked for shape. A workflow_dispatch string is typed by someone who can already run Actions
+      # here, so this is not the day's biggest risk — but a free-text field interpolated straight into
+      # a shell is a script-injection seam, and quoting it away costs one line.
+      - name: Refuse anything but a closed track
+        env:
+          TRACK: ${{ inputs.track }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          case "${TRACK}" in
+            production)
+              echo "::error::'production' is not a closed track. Use publish-play-production.yml — it has the approval gate and the staged rollout this workflow deliberately lacks."
+              exit 1 ;;
+            beta)
+              echo "::error::'beta' is Play's OPEN testing track, which is public. If that is really what you want, publish-play-production.yml offers it behind its approval gate."
+              exit 1 ;;
+            internal)
+              echo "::error::'internal' is the source track. Promoting it onto itself is not something Play can do."
+              exit 1 ;;
+            '')
+              echo "::error::No destination track. 'alpha' is the closed track every developer account starts with."
+              exit 1 ;;
+            *[!a-zA-Z0-9_-]*)
+              echo "::error::Track ids are letters, digits, dashes and underscores. Got: ${TRACK}"
+              exit 1 ;;
+          esac
+          if [ -n "${VERSION_CODE}" ]; then
+            case "${VERSION_CODE}" in
+              *[!0-9]*)
+                echo "::error::version_code is Play's versionCode — digits, not a versionName. Got: ${VERSION_CODE}"
+                exit 1 ;;
+            esac
+          fi
+          if [ -n "${RELEASE_VERSION}" ]; then
+            case "${RELEASE_VERSION}" in
+              *[!0-9.]*)
+                echo "::error::release_version is a semver like 0.5.0, matching a '### x.y.z' heading in docs/store-listing.md. Got: ${RELEASE_VERSION}"
+                exit 1 ;;
+            esac
+          fi
+          echo "::notice::Destination '${TRACK}' is a closed testing track"
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      # ⚠ The commit count — which the build workflows use for versionCode — is the WRONG answer here,
+      # and wrong in a way that looks right. It describes the checkout; a promotion is about a build
+      # uploaded earlier. The two agree only while `main` still points at the release tag, and stop
+      # agreeing the moment anything else merges. So ask Play: the internal track knows exactly which
+      # build it is holding, from any ref, with no dialog field to get right.
+      - name: Resolve the versionCode being promoted
+        id: version
+        env:
+          JSON_KEY_DATA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          code="${VERSION_CODE}"
+          if [ -n "${code}" ]; then
+            echo "Pinned by the dialog: versionCode ${code}"
+          else
+            # Written to a file rather than passed inline: the key is a multi-line JSON blob and the
+            # shell is not a good place for it.
+            key="${RUNNER_TEMP}/play-key.json"
+            printf '%s' "${JSON_KEY_DATA}" > "${key}"
+            echo "Asking Play which build is on 'internal'..."
+            out="$(bundle exec fastlane run google_play_track_version_codes \
+              package_name:'com.example.starter' \
+              track:'internal' \
+              json_key:"${key}" 2>&1)" || { echo "${out}"; rm -f "${key}"; exit 1; }
+            rm -f "${key}"
+            # `Result: [423]` — take the highest, so an internal track holding more than one release
+            # promotes the newest rather than whichever the API happened to list first.
+            code="$(printf '%s\n' "${out}" \
+              | sed -n 's/.*Result: *\[\([0-9,[:space:]]*\)\].*/\1/p' \
+              | tr ',' '\n' | tr -d '[:space:]' | grep -E '^[0-9]+$' | sort -n | tail -1)"
+            if [ -z "${code}" ]; then
+              echo "${out}"
+              echo "::error::No versionCode on 'internal'. Did publish-play.yml run for this release, or is that release halted?"
+              exit 1
+            fi
+            echo "Play says 'internal' holds versionCode ${code}"
+          fi
+          echo "code=${code}" >> "${GITHUB_OUTPUT}"
+          echo "::notice::Promoting versionCode ${code} from 'internal' to '${{ inputs.track }}'"
+
+      # Generated, not committed: docs/store-listing.md is the authored copy and this is a rendering of
+      # it. It runs for the release notes and nothing else — testers open a build and want to know what
+      # changed, and publish-play.yml uploads no metadata at all, so this is the first place notes for
+      # this versionCode reach Play.
+      #
+      # ⚠ Changelog files are named by versionCode, not semver: supply keys notes to the build, and a
+      # name Play cannot match is ignored in silence rather than rejected. Hence --version-code.
+      - name: Render the release notes
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          args=(--out fastlane/metadata/android --version-code '${{ steps.version.outputs.code }}')
+          if [ -n "${RELEASE_VERSION}" ]; then
+            args+=(--release-version "${RELEASE_VERSION}")
+          fi
+          python3 scripts/play-metadata.py "${args[@]}"
+
+      - name: Promote to Play
+        env:
+          SUPPLY_JSON_KEY_DATA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          TRACK: ${{ inputs.track }}
+        run: |
+          set -euo pipefail
+          # skip_upload_aab/apk are what make this a promotion rather than an upload: supply moves the
+          # release already sitting on internal instead of looking for a binary to send.
+          #
+          # The three listing skips are unconditional here, unlike the production workflow's
+          # update_listing input, and that is a permission boundary rather than a preference. Play's
+          # descriptions, screenshots and graphics belong to the *app*, not to a track, so pushing them
+          # from a test promotion would edit the public listing — which needs *Manage store presence*.
+          # This workflow stays inside the two boxes the service account already has (*View app
+          # information* and *Release apps to testing tracks*), which is why it works on a first run
+          # where the production workflow 403s. Release notes are part of the track release rather than
+          # the listing, so they still ride up: --skip_upload_metadata does not skip changelogs.
+          #
+          # `completed`, never a rollout fraction: a closed test wants every tester on the same
+          # build. A fraction here would silently hold some of them back on the previous one, and since
+          # the 14-day window is measured on testers being opted in, a tester who never receives the
+          # build is a tester quietly not testing.
+          args=(
+            --track internal
+            --track_promote_to "${TRACK}"
+            --version_code '${{ steps.version.outputs.code }}'
+            --track_promote_release_status completed
+            --skip_upload_aab true
+            --skip_upload_apk true
+            --metadata_path fastlane/metadata/android
+            --skip_upload_metadata
+            --skip_upload_images
+            --skip_upload_screenshots
+          )
+          if [ '${{ inputs.dry_run }}' = 'true' ]; then
+            # Play validates the whole edit and then discards it. Nothing is published, nothing is sent
+            # for review — the honest way to prove this workflow before trusting it.
+            args+=(--validate_only)
+            echo "::notice::DRY RUN — validating against Play, committing nothing"
+          fi
+          bundle exec fastlane supply "${args[@]}"
+
+      # ⚠ Play's own step, and it is not instant: the *first* release on a closed track goes through
+      # app review, so a green run here means the promotion was accepted, not that the testers have it.
+      # Later releases on a track Play has already reviewed appear in minutes.
+      - name: What happens next
+        run: |
+          echo "::notice::versionCode ${{ steps.version.outputs.code }} promoted to '${{ inputs.track }}'. A track's FIRST release waits on Play review; after that testers see it within minutes. Play Console -> Testing -> Closed testing."

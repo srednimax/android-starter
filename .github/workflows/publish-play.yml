@@ -46,7 +46,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       # The build reads its signing coordinates from local.properties and the keystore from a
-      # path outside the repo, because neither may ever be committed (ADR-0009). A CI runner
+      # path outside the repo, because neither may ever be committed (RELEASING.md, *The upload key*). A CI runner
       # has neither, so both are materialised from secrets here and removed again at the end.
       #
       # A release build whose key is incomplete fails at Gradle *configuration* time rather
