@@ -30,25 +30,51 @@ close. Whenever `APP_SCHEMA_VERSION` changes, all five hold before the release g
 
 ## Before the first upload
 
+- [ ] **Delete what the app does not need**, while deleting is free — [`optional-modules.md`](optional-modules.md)
+      lists each module's files and the five places around the code a strip reaches. Room, photos,
+      backup and reminders are each a data-loss or Data safety story you will otherwise defend forever.
+- [ ] **Decide `minSdk` deliberately, before launch.** The direction is asymmetric: raising it later
+      strands existing installs on the last build that fitted them, lowering it later is free. If the
+      only phone in the loop sits at the top of the range, every `SDK_INT` branch below it ships
+      unvalidated — the first app built from this template raised 26 to 33 for exactly that reason. Move CI's floor legs with it.
 - [ ] **Replace the placeholder mark.** `art/mark.py`, then `python3 art/make-launcher-icon.py` and
-      `make-feature-graphic.py`. Record the provenance in `art/README.md` — where the art came from is
-      the thing most likely to block a first upload, and it is discovered late.
-- [ ] **Replace the placeholder domain.** `data/ItemEntity.kt` and `ui/items/`.
+      `make-feature-graphic.py`. Commit the concept image and record its provenance in
+      `art/README.md` — where the art came from is the thing most likely to block a first upload, and
+      it is discovered late.
+- [ ] **Replace the placeholder domain.** `data/ItemEntity.kt` and `ui/items/` — or delete them
+      (above).
+- [ ] **Rewrite `scripts/edge-to-edge.py`'s SCENES** against your screens. Until then the nightly
+      walks screens that do not exist, and `screenshots.py` cannot shoot a listing.
+- [ ] **Make the artifact allowlists yours.** `aab-permissions.py`'s EXPECTED, FORBIDDEN and
+      EXPECTED_ORIENTATION describe the template. Run all four `aab-*.py` scripts against a local
+      `bundleRelease` **before the first tag** — the first app built from it found its stale table in the publish
+      workflow, after the tag, with the version already spent.
 - [ ] **Choose the palette.** Four seeds in `scripts/gen_scheme.py`, regenerate `theme/Color.kt`,
       read the contrast report it prints on stderr.
 - [ ] **Write the listing.** `docs/store-listing.md` — every heading in it is parsed by a script.
 - [ ] **Write the privacy policy** and confirm GitHub Pages is serving `docs/`. Play requires a
       *hosted* URL, and an offline app has no server of its own.
+- [ ] **Answer the Console's App content pages and write [`play-app-content.md`](play-app-content.md)
+      in the same sitting** — the reasons are in front of you then and gone a week later. It moves in
+      the same commit as the privacy policy, every time.
+- [ ] **`LICENSE` and `README.md`.** Bootstrap wrote an all-rights-reserved notice that grants
+      nothing; choose the licence you mean, and make the README's *Contributing* agree with it.
 - [ ] **Create the upload keystore, outside the repo**, and put its four values in
       `local.properties`. Back it up somewhere that is not this machine: losing it means never being
-      able to update the app on Play again.
+      able to update the app on Play again. Fill in *The upload key* table in `RELEASING.md` the same
+      day — the fingerprint is what Play asks you to compare.
 - [ ] **Set up the GitHub repository** — `python3 scripts/repo-setup.py` does the ruleset, the
       merge setting and Pages; the release-please PAT is the one step it cannot do, and without it
       no release PR is ever opened. *Setting up a new repository* in [`RELEASING.md`](RELEASING.md).
       **None of this is inherited from the template** — GitHub copies files, never settings — and
       the build stays green while it is all still undone.
 - [ ] **Set the five Play secrets and create the service account** (`docs/RELEASING.md`) — the
-      service account is the one step CI cannot do for itself.
+      service account is the one step CI cannot do for itself. No account permissions; two app
+      permissions, on this app only; no expiry date.
+- [ ] **Plan the closed test.** A new personal developer account reaches production only after a
+      closed test — at the time of writing 12 testers opted in for 14 continuous days, then an access
+      application. Recruit the testers before the build is ready, not after; `publish-play-closed.yml`
+      moves each build to them.
 - [ ] **Decide the `applicationId` deliberately.** It is fixed the moment the Play entry is created —
       not renameable, not transferable without losing every install and review.
 

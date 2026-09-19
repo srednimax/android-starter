@@ -13,7 +13,7 @@ the part that takes weeks to get right and looks like nothing on a screenshot.
 ```bash
 gh repo create my-app --template srednimax/android-starter --private --clone
 cd my-app
-python3 bootstrap.py --name "My App" --namespace app.myapp --appid com.example.myapp
+python3 bootstrap.py --name "My App" --namespace app.myapp --appid io.github.<you>.myapp
 git config core.hooksPath .githooks     # Conventional Commits — release-please depends on it
 ./gradlew assembleDebug test
 rm bootstrap.py
@@ -26,16 +26,30 @@ without it on purpose — the template never releases, so the hook would block e
 makes installing it a **once-per-repo step**, done by bootstrap. Commit the file, and launch Claude Code
 inside the new repository rather than a parent folder, or the hook never loads.
 
-Then, in order of how much they change the feel of the app:
+`bootstrap.py` also replaces this README and the template's LICENSE — the latter with a notice that
+reserves all rights, because "use it for anything" left on an app's public repository reads as exactly
+that grant. Choose your licence before the first push you care about.
 
-1. **`art/mark.py`** — replace the placeholder mark, and run `python3 art/make-launcher-icon.py`.
-2. **`scripts/gen_scheme.py`** — change the four brand seeds and regenerate `theme/Color.kt`.
-3. **`data/ItemEntity.kt` and `ui/items/`** — replace the placeholder domain with yours.
+Then:
+
+1. **[`docs/optional-modules.md`](docs/optional-modules.md)** — delete what the app does not need
+   (Room, photos, backup, reminders) **before the first upload**, while deleting is free. It lists
+   every file per module and the places around the code a strip reaches.
+2. **`art/mark.py`** — replace the placeholder mark, and run `python3 art/make-launcher-icon.py`.
+3. **`scripts/gen_scheme.py`** — change the four brand seeds and regenerate `theme/Color.kt`.
+4. **`data/ItemEntity.kt` and `ui/items/`** — replace the placeholder domain with yours, and rewrite
+   `scripts/edge-to-edge.py`'s SCENES against your screens in the same week.
+5. **`scripts/aab-permissions.py`** — its allowlists describe the template; keep them true to your
+   artifact, and run the four `aab-*.py` checks on a local `bundleRelease` before the first tag.
+
+`docs/DOD.md`'s *Before the first upload* is the full list.
 
 ## What comes with it
 
 **Release pipeline.** Conventional Commits → release-please → a versioned tag → an AAB signed with a
-key that is refused when missing → an internal Play track. `versionCode` is the commit count;
+key that is refused when missing → an internal Play track. From there, two hand-triggered workflows
+promote the same bytes: to closed testing (which a new Play account must pass before production), and
+to production behind an approval gate and a staged rollout. `versionCode` is the commit count;
 `versionName` is release-please's. Neither is ever hand-edited.
 
 **Quality gates that run in CI**, each existing because of a specific way a release went wrong:
@@ -53,7 +67,9 @@ dependency merged into your manifest), `aab-locale.py`, `aab-version.py`, `aab-r
 
 **Device drivers.** `edge-to-edge.py` walks every screen in four navigation configurations across an
 emulator matrix and asserts nothing is drawn under the system bars. `screenshots.py` captures the
-Play listing set. `device-gate.py` reads what a vendor ROM will actually let the app do.
+Play listing set off the shipped build, with the status bar emptied and the phone's own theme,
+locale and Do Not Disturb handed back afterwards. `device-gate.py` reads what a vendor ROM will
+actually let the app do; `doze-capture.sh` keeps the evidence of an overnight run.
 
 **In the app itself:** a schema wipe guard that copies the database aside *before* Room can open it,
 a kind-aware image pipeline that strips EXIF, backup export/restore with a manifest, a custom
@@ -65,7 +81,9 @@ attribution screen.
 
 - **[`CLAUDE.md`](CLAUDE.md)** — the house rules. Short, and loaded every session by Claude Code.
 - **[`docs/adr/`](docs/adr/)** — the decisions and *why*. Read before changing what they cover.
-- **[`docs/DOD.md`](docs/DOD.md)** — the standing checklist that never closes.
+- **[`docs/DOD.md`](docs/DOD.md)** — the live checklist, and the standing checks that never close.
+- **[`docs/PLAN.md`](docs/PLAN.md)** — the roadmap skeleton; each phase gets its own `phase-N.md`.
+- **[`docs/optional-modules.md`](docs/optional-modules.md)** — what to delete, and what breaks when you do.
 - **[`docs/RELEASING.md`](docs/RELEASING.md)** — commits, versions, and how a build reaches Play.
 
 ## Stack
