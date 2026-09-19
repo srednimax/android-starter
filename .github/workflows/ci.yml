@@ -137,6 +137,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # **Two legs, the floor and the target, and each has to be one of those.** A leg
+          # that is neither is inertia: the first app built from this template found an API 34
+          # leg here that was never the floor of anything, and cut it. When `minSdk` or
+          # `targetSdk` moves, these lines move with it in the same commit — a floor leg below
+          # `minSdk` covers code the app cannot run, on a level it cannot install on.
+          #
           # The `minSdk` floor. Three SDK_INT branches — the pre-S path into system
           # backup settings, the pre-R agent branch and the pre-S theme — plus
           # AppCompat's pre-13 locale backport (ADR-0004) run *only* down here, and a
@@ -144,9 +150,6 @@ jobs:
           # `aosp_atd`: the slim ATD images start at API 30, so 26 has no such image.
           - api-level: 26
             target: default
-          # The long-standing leg, kept as-is.
-          - api-level: 34
-            target: aosp_atd
           # `targetSdk`. Where the platform applies its newest behaviour changes to us
           # rather than grandfathering them.
           - api-level: 36
@@ -181,6 +184,22 @@ jobs:
           disable-animations: true
           script: ./gradlew connectedDebugAndroidTest
 
+      # **Zero tests is not a pass.** Gradle reports a connected run with nothing in it as
+      # successful, so an app that deletes the template's Room and media tests — the only
+      # instrumented ones it ships — keeps a green tick on every leg while nothing is tested.
+      # The first app built from this template ran exactly that way until it wrote its first
+      # device test. Counted from the JUnit XML rather than trusted from the exit code.
+      - name: Refuse an empty instrumented run
+        run: |
+          python3 - <<'EOF'
+          import glob, sys, xml.etree.ElementTree as ET
+          files = glob.glob("app/build/outputs/androidTest-results/**/TEST-*.xml", recursive=True)
+          ran = sum(int(ET.parse(f).getroot().get("tests", 0)) for f in files)
+          print(f"{ran} instrumented test(s) across {len(files)} result file(s)")
+          if ran == 0:
+              sys.exit("No instrumented test ran. Write one, or delete this job — a green leg with nothing behind it is a gate that cannot fail.")
+          EOF
+
       # The name has to carry the API level: upload-artifact refuses to write the same
       # artifact name twice, so a shared name fails every leg after the first.
       - name: Upload reports
@@ -195,7 +214,13 @@ jobs:
   #
   # **The prize is API 26-28, not parallelism.** The phone is the only physical device and it is
   # modern, so every claim about how the app draws under the system bars below API 29 was argued
-  # from theme XML and never observed. An emulator observes it.
+  # from theme XML and never observed. An emulator observes it. The levels are the floor and the
+  # target, as in `instrumented`; if `minSdk` rises past 29 the prize becomes the configuration grid
+  # instead — navigation mode varies by device and by user setting, not by platform release.
+  #
+  # **An app that locks its activity to portrait drops the two landscape configs here**, in the
+  # same commit as the lock: every scene starts from that activity, so a landscape cell would
+  # capture portrait under a landscape name. `scripts/edge-to-edge.py`'s CONFIGS says the same.
   #
   # Deliberately NOT on `pull_request`, and deliberately not part of `instrumented-gate`:
   # `edge-to-edge.py` walks ~75 scenes per cell by driving uiautomator taps, and its `settle()`
@@ -229,18 +254,17 @@ jobs:
       # these cells are now siblings rather than steps inside one job.
       fail-fast: false
       matrix:
-        api-level: [26, 34, 36]
+        api-level: [26, 36]
         config: [portrait-gesture, portrait-threebutton, landscape-gesture, landscape-threebutton]
         include:
-          - api-level: 26
-            target: default
-          # `default`, not `aosp_atd`, and API 36 next door keeps ATD deliberately. The API 34 ATD
-          # image ships no `com.android.internal.systemui.navbar.*` overlays and no readable
+          # ⚠ **The floor takes a full `default` image, never `aosp_atd`, at any level.** ATD strips
+          # SystemUI pieces to run faster and how much it strips varies by level: the API 34 ATD
+          # image once shipped no `com.android.internal.systemui.navbar.*` overlays and no readable
           # `secure navigation_mode`, so every cell on it was a configuration nothing could confirm
-          # the device was in — four red jobs saying exactly that. ATD strips SystemUI pieces to run
-          # faster, and how much it strips varies by level: the same target on API 36 has the
-          # overlays and runs all four cells. A full AOSP image has them at every level.
-          - api-level: 34
+          # the device was in — four red jobs saying exactly that. API 36's ATD has the overlays and
+          # runs all four cells, which is why the target keeps it. If the floor rises, keep
+          # `default` there rather than betting the new level's ATD is the 36 kind.
+          - api-level: 26
             target: default
           - api-level: 36
             target: aosp_atd
