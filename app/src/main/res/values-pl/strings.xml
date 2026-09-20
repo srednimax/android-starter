@@ -37,13 +37,32 @@
     <string name="settings_material_you_hint">Android 12 i nowsze. Domyślnie wyłączone, aby aplikacja zachowała własną paletę.</string>
     <string name="settings_language">Język</string>
     <string name="settings_language_system">Systemowy</string>
+    <string name="settings_language_report">Coś brzmi nie tak?</string>
+    <string name="settings_language_report_hint">Napisz, jeśli jakieś słowo jest nie tak w twoim języku. Otwiera aplikację pocztową z już wpisanym językiem, w którym czytasz.</string>
     <string name="settings_reminders">Przypomnienia</string>
     <string name="settings_reminders_enabled">Przypominaj mi</string>
     <string name="settings_reminders_hint">Jedno sprawdzenie dziennie. Nic nie jest nigdzie wysyłane.</string>
+    <string name="settings_reminders_blocked_title">Przypomnienia nie dotrą</string>
+    <string name="settings_reminders_blocked_body">Powiadomienia tej aplikacji są wyłączone, więc nic nie zostanie wyświetlone, gdy nadejdzie termin.</string>
+    <string name="settings_reminders_blocked_action">Otwórz ustawienia powiadomień</string>
     <string name="settings_data">Dane</string>
     <string name="settings_backup">Kopia zapasowa i przywracanie</string>
     <string name="settings_about">O aplikacji</string>
+    <string name="settings_support">Pomoc i opinie</string>
     <string name="settings_licences">Licencje open source</string>
+
+    <string name="support_title">Pomoc i opinie</string>
+    <string name="support_report">Zgłoś problem</string>
+    <string name="support_report_hint">Otwiera aplikację pocztową z już wpisanymi informacjami o telefonie, które aplikacja zna.</string>
+    <string name="support_feature">Zaproponuj funkcję</string>
+    <string name="support_feature_hint">Napisz, co aplikacja mogłaby robić i do czego byś tego używał.</string>
+    <string name="support_body_bug">Co się stało i co powinno się stać zamiast tego:</string>
+    <string name="support_body_feature">Co aplikacja mogłaby robić?</string>
+    <string name="support_body_language">Które słowo jest nie tak i na którym ekranie?</string>
+    <string name="support_no_mail_app">Na tym telefonie nie ma aplikacji pocztowej do otwarcia.</string>
+    <string name="support_rate">Oceń tę aplikację w Google Play</string>
+    <string name="support_rate_hint">Otwiera stronę aplikacji w Google Play. Ocena jest dobrowolna i niczego nie odblokowuje.</string>
+    <string name="support_no_play">Na tym telefonie nie ma Google Play ani przeglądarki do otwarcia.</string>
 
     <string name="backup_explainer">Wszystko zostaje na tym telefonie. Kopia zapasowa to pojedynczy plik, który przechowujesz, gdzie chcesz.</string>
     <string name="backup_export_records">Eksportuj dane</string>

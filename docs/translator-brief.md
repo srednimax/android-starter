@@ -160,8 +160,12 @@ Before a language goes into `locales_config.xml`:
 - **It is compiled, installed and looked at.** A staged draft has never met `aapt2`: clipped labels and
   lint's plural warnings are invisible until it does, and neither needs a native speaker to see.
 
-After it ships, a way to report a bad string — a row under the language picker that opens a mail is
-enough — is how fluency findings arrive, as ordinary bug reports. **What a report must not do is talk
+After it ships, a way to report a bad string is how fluency findings arrive, as ordinary bug
+reports. **That route is already wired**: *Settings → Language → Something read wrong?* opens a mail
+tagged `#language` with the resolved locale already in it (`ui/support/SupportHandoff.kt`), which is
+the one fact such a report cannot do without and the one nobody should have to type. It sits beside
+the picker rather than on the Support screen because that is where somebody is standing the moment a
+translation reads wrong. **What a report must not do is talk
 the app back across §2**: the reporter has the fluency, and this file has the reasoning.
 
 If this is not your policy, replace this section *and* say so in ADR-0004 — `translation-gate.py`
