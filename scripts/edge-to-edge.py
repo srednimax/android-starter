@@ -1367,6 +1367,7 @@ SCENES = [
     # --- detail screens: no bottom bar, so the navigation-bar inset is the app's own problem ----
     Scene("item-detail", "detail", [("tap", "First item")]),
     Scene("backup", "detail", [("tap", "Settings"), ("tap", "Backup and restore")]),
+    Scene("support", "detail", [("tap", "Settings"), ("tap", "Help and feedback")]),
     Scene("licences", "detail", [("tap", "Settings"), ("tap", "Open-source licences")]),
     Scene("licences-bottom", "detail", [("tap", "Settings"), ("tap", "Open-source licences"), ("swipe_end", "")]),
 

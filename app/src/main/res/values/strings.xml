@@ -53,13 +53,41 @@
     <string name="settings_language_system">System</string>
     <string name="settings_language_english" translatable="false">English</string>
     <string name="settings_language_polish" translatable="false">Polski</string>
+    <string name="settings_language_report">Something read wrong?</string>
+    <string name="settings_language_report_hint">Tell me if a word looks wrong in your language. Opens your email app, with the language you are reading already filled in.</string>
     <string name="settings_reminders">Reminders</string>
     <string name="settings_reminders_enabled">Remind me</string>
     <string name="settings_reminders_hint">A single daily check. Nothing is sent anywhere.</string>
+    <!-- The banner, not the switch: said as what is lost, because a user who has just refused a
+         permission can already see that it is off. PLAN.md rule 4's third clause. -->
+    <string name="settings_reminders_blocked_title">Reminders will not arrive</string>
+    <string name="settings_reminders_blocked_body">Notifications are switched off for this app, so nothing will be posted when something is due.</string>
+    <string name="settings_reminders_blocked_action">Open notification settings</string>
     <string name="settings_data">Data</string>
     <string name="settings_backup">Backup and restore</string>
     <string name="settings_about">About</string>
+    <string name="settings_support">Help and feedback</string>
     <string name="settings_licences">Open-source licences</string>
+
+    <!-- Help and feedback. The three `support_subject_*` are translatable="false" on purpose:
+         they are the filter tag you sort your own mail on and the user never reads them, while
+         the prompt beside each one is a sentence addressed to them and is translated. A Polish
+         report arriving under "Starter #bug" is the correct outcome. -->
+    <string name="support_title">Help and feedback</string>
+    <string name="support_report">Report a problem</string>
+    <string name="support_report_hint">Opens your email app with what the app knows about your phone already filled in.</string>
+    <string name="support_feature">Suggest a feature</string>
+    <string name="support_feature_hint">Say what you would like the app to do, and what you would use it for.</string>
+    <string name="support_subject_bug" translatable="false">Starter #bug</string>
+    <string name="support_subject_feature" translatable="false">Starter #feature</string>
+    <string name="support_subject_language" translatable="false">Starter #language</string>
+    <string name="support_body_bug">What happened, and what you expected instead:</string>
+    <string name="support_body_feature">What would you like the app to do?</string>
+    <string name="support_body_language">Which word read wrong, and on which screen?</string>
+    <string name="support_no_mail_app">No email app on this phone to open.</string>
+    <string name="support_rate">Rate this app on Google Play</string>
+    <string name="support_rate_hint">Opens this app on Google Play. Rating is optional and unlocks nothing.</string>
+    <string name="support_no_play">No Google Play or web browser on this phone to open.</string>
 
     <!-- Backup -->
     <string name="backup_explainer">Everything stays on this phone. A backup is a single file you keep wherever you like.</string>

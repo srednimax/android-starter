@@ -29,6 +29,7 @@ import app.starter.ui.items.ItemsScreen
 import app.starter.ui.settings.SettingsScreen
 import app.starter.ui.support.LicenceTextScreen
 import app.starter.ui.support.LicencesScreen
+import app.starter.ui.support.SupportScreen
 
 /**
  * What every back-stack entry is wrapped in — above all, **one `ViewModelStore` per entry**.
@@ -137,10 +138,14 @@ fun MainNavigation(modifier: Modifier = Modifier) {
                         SettingsScreen(
                             onOpenBackup = { backStack.add(Backup) },
                             onOpenLicences = { backStack.add(Licences) },
+                            onOpenSupport = { backStack.add(Support) },
                         )
                     }
                     entry<Backup> {
                         BackupScreen(onBack = { backStack.removeLastOrNull() })
+                    }
+                    entry<Support> {
+                        SupportScreen(onBack = { backStack.removeLastOrNull() })
                     }
                     entry<Licences> {
                         LicencesScreen(

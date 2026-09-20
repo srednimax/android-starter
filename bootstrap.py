@@ -282,6 +282,11 @@ def main() -> int:
                     f'"app_name" translatable="false">{TEMPLATE_NAME} debug<',
                     f'"app_name" translatable="false">{args.name} debug<',
                 ),
+                # The three `support_subject_*` tags — "Starter #bug" and friends. They carry the
+                # app name and are translatable="false", so neither the rule above them nor the
+                # translation gate reaches them, and a mail filter on the wrong name is invisible
+                # until the first report arrives.
+                (f">{TEMPLATE_NAME} #", f">{args.name} #"),
             ],
         )
     rewrite(ROOT / "app/src/main/java" / args.namespace.replace(".", "/") / "data/AppDatabase.kt",
@@ -327,6 +332,9 @@ def main() -> int:
         ROOT / ".github/workflows/publish-play.yml",
         ROOT / ".github/workflows/publish-play-production.yml",
         ROOT / ".github/workflows/publish-play-closed.yml",
+        # The rate-on-Play link. A debug build carries `.debug`, which Play has never heard of, so
+        # the listing's id is stated rather than derived from BuildConfig.
+        ROOT / "app/src/main/java" / args.namespace.replace(".", "/") / "ui/support/SupportHandoff.kt",
     ]:
         rewrite(path, [(TEMPLATE_APP_ID, args.appid)])
 
@@ -369,6 +377,8 @@ def main() -> int:
         "  project hooks only from the folder it was launched in\n"
         "\n"
         "Then, before the first upload (docs/DOD.md has the full list):\n"
+        "  ui/support/SupportHandoff.kt - SUPPORT_ADDRESS is support@example.com. Nothing here can\n"
+        "  guess it, and a build that ships it has no way for anyone to reach you\n"
         "  docs/optional-modules.md  - delete what the app does not need while deleting is free\n"
         "  scripts/aab-permissions.py - EXPECTED lists the template's permissions; keep it true\n"
         "  scripts/edge-to-edge.py    - SCENES walks the template's screens; rewrite it against yours\n"

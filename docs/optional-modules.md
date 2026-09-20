@@ -83,6 +83,11 @@ scripts in the last column — they are what tells you the strip is finished rat
   `INTERNET` is a line a Play reviewer can ask about; removing WorkManager removes the question.
 - `scripts/aab-permissions.py`'s EXPECTED rows for all of the above, in the same commit.
 - `scripts/device-gate.py`'s `ALARM_TAG` and the exact-alarm line, if nothing schedules.
+- **Settings' *Reminders* section, and the ask and banner behind it** — the `SwitchRow`, the
+  `rememberNotificationPermissionAsk` call, the resumed re-read of `notificationsAllowed`, the
+  `WarningBanner` and its three `settings_reminders_blocked_*` strings, plus
+  `AppPreferences.remindersEnabled`. That whole block is `PLAN.md` rule 4 worked through for one
+  ask; it is the shape to copy for *your* first ask, so read it before deleting it.
 - ADR-0003 gets its amendment.
 
 ### The placeholder domain

@@ -51,6 +51,11 @@ close. Whenever `APP_SCHEMA_VERSION` changes, all five hold before the release g
       workflow, after the tag, with the version already spent.
 - [ ] **Choose the palette.** Four seeds in `scripts/gen_scheme.py`, regenerate `theme/Color.kt`,
       read the contrast report it prints on stderr.
+- [ ] **Put a real support address in `ui/support/SupportHandoff.kt`.** It ships as
+      `support@example.com`, `bootstrap.py` cannot guess it, and a release carrying it is a release
+      with no way for anyone to reach you — Play's listing wants the same address in its contact
+      field, and a sideloaded APK keeps mailing whatever string was compiled in for as long as that
+      build survives. A dedicated account, not an alias on your personal mail.
 - [ ] **Write the listing.** `docs/store-listing.md` — every heading in it is parsed by a script.
 - [ ] **Write the privacy policy** and confirm GitHub Pages is serving `docs/`. Play requires a
       *hosted* URL, and an offline app has no server of its own.

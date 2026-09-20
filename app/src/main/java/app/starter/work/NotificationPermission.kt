@@ -90,6 +90,21 @@ fun rememberNotificationPermissionAsk(onOutcome: (NotificationPermissionOutcome)
 }
 
 /**
+ * **Is the app allowed to post notifications at all?** A live read, never a remembered outcome.
+ *
+ * The outcome of [rememberNotificationPermissionAsk] is true at the moment it is delivered and can
+ * be stale a minute later: the screen this app *deliberately sends the user to* when the system
+ * dialog is spent is the one where they flip this switch, so an answer cached before that trip is
+ * wrong exactly when it decides whether to tell the user their reminders are going nowhere. Read it
+ * again on every resume — `ui/settings/SettingsScreen.kt` is the worked example.
+ *
+ * It is only half the question when the app has more than one channel: a channel muted on its own
+ * hides its notifications while this still answers true. [openChannelNotificationSettings] is the
+ * other half's way back.
+ */
+fun Context.notificationsAllowed(): Boolean = NotificationManagerCompat.from(this).areNotificationsEnabled()
+
+/**
  * This app's page in Android's settings — where a permanently refused permission can still be turned
  * back on, and the only remaining route once the system dialog is spent.
  */
