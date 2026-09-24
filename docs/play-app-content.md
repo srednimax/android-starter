@@ -144,6 +144,71 @@ declaration asks for: what the user sees, why it cannot wait, and why no named t
   Pages. It updates on a merge to `main`, with no release, which is why it has to be right before the
   app it describes ships rather than after.
 
+## Production access — the application, and the answers it was given
+
+**Submitted _<date>_.** Asked once, from the Console's Dashboard, after the closed test's 14 days.
+Record the answers **verbatim**, not summarised: the Console asks the same set again for the next app
+on this account, and an answer re-read a year later has to be the one that was given.
+
+**About your closed test**
+
+- *How did you recruit users for your closed test?* — _<answer>_
+- *How easy was it to recruit testers?* — _<answer>_
+- *Describe the engagement you received from testers* — _<answer>_
+- *Provide a summary of the feedback that you received* — _<answer>_
+
+**About your app**
+
+- *Who is the intended audience?* — _<answer>_
+- *Describe how your app provides value to users* — _<answer>_
+- *How many installs do you expect in your first year?* — _<answer>_
+
+**Your production readiness**
+
+- *What changes did you make based on what you learned during your closed test?* — _<answer>_
+- *How did you decide that your app is ready for production?* — _<answer>_
+
+**Three things the first app built from this template kept deliberate, so a later answer does not undo
+them:**
+
+1. **The audience answer agrees with *Target audience* above.** A reviewer reads the two side by side.
+   A mismatch is a question rather than a rejection, but it can cost days.
+2. **Engagement is answered from what the app can know.** With no `INTERNET` permission there is no
+   telemetry, so *"I do not know how many used X"* is the true answer. A guessed figure would
+   contradict *Data safety* in this same file.
+3. **The changes answer says where the changes came from.** If the testers reported nothing, say so and
+   name what came from your own use instead. Presenting your own work as tester-driven is an easy
+   dishonest sentence, and the application does not need one.
+
+## A tip (Payments policy — not a question Play asks, but one a reviewer answers)
+
+**Default: no tip on any surface the release controls.** Not in the app, and not on the pages the
+listing links to. Read this before adding one, because the policy text and its enforcement disagree.
+
+- **The text allows it.** Payments policy §3.2 treats a tip as a peer-to-peer payment, outside Play
+  Billing, when **100% reaches the creator** and **nothing unlocks** — no badge, no theme, no
+  thanks-screen. §4's anti-steering rule excepts §3. So: one personal payment link, worded as a *tip to
+  a person*, never a *donation to a project*.
+- **Enforcement has rejected apps anyway.** StreetComplete (February 2022) was rejected for in-app
+  Patreon, Liberapay and GitHub Sponsors links — and **for a link to its own home page, because that
+  page carried donation information**. A Buy Me a Coffee link in the app this template was extracted
+  from was flagged the same way. None of those is the §3.2 shape (tiers unlock things, a platform takes
+  a cut, a project is not a person), but the distinction has to survive a reviewer skimming for
+  "external payment link", and a pre-launch rejection costs the closed-test window.
+- **The reach is one level out.** The first app built from this template moved its tip from the app to
+  the repository and the Pages site, then noticed that the listing's *Website* field and the last line
+  of its full description point at exactly those pages. So "nothing the app links to" includes what
+  the **listing** links to.
+- **When to revisit:** once the app is live, with a track record to appeal from. The cheapest shape
+  then is a tip on the repository alone, with the listing's Website field and full description kept
+  off it. A Play Billing consumable is the unambiguous alternative, at the cost of a billing
+  dependency, Google's cut, and an *in-app purchases* badge on the listing.
+
+Region carve-outs (US external links since October 2025, the EEA's external-offers program) do not
+help: both are fee programs with reporting obligations, which is not a serious route for occasional
+tips. A sentence promising a *future* tip, with nothing to click, is a statement about pricing and is
+fine anywhere.
+
 ---
 
 ## When Play asks again

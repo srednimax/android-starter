@@ -12,6 +12,7 @@ open every session. Read the phase you are in here; read `DOD.md` to know what t
 it costs the phase rather than the whole history. This file stays deliberately thin: one paragraph
 per phase, no task lists. The detail is written when the phase opens, not now. The app this template
 was extracted from and the first app built from it settled on exactly this split independently.
+[`phase-template.md`](phase-template.md) is the shape a phase file settled into; copy it on the day.
 
 <!--
     A skeleton. Replace the phases with yours; keep the four rules at the bottom unless you have a
@@ -37,6 +38,13 @@ account. Everything that reaches a tester's phone is harder to change afterwards
 permission, a `minSdk`, the `applicationId`. So name the phase the door sits after, and write down what
 it freezes. The closed-test window is calendar time and other people's replies, so later phases can
 run while it waits.
+
+**Do not plan a decision on the testers' answers.** The first app built from this template left two
+phases' open questions — defaults, whether a behaviour was too clever — to be asked of its closed-test
+testers. The survey that did go out asked none of them, and both closed *unanswered, on the values
+that shipped*. What carried
+the decisions was the device readings. Decide on a reading, ship a default, and let the mail hand-off
+(`ui/support/`, live from the door) tell you if it is wrong.
 
 ### 2. When the two halves of a phase cost wildly different amounts, they are two phases
 
