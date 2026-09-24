@@ -61,3 +61,24 @@ fun Context.ensureReminderChannels() {
         )
     }
 }
+
+/**
+ * **Can this channel's notifications still appear?** The other half of [notificationsAllowed].
+ *
+ * Android lets the user lower a single channel to `IMPORTANCE_NONE`, which blocks it while leaving
+ * the app-wide permission on — so a screen that reads only the permission reports working reminders
+ * that the user will never see. The first app built from this template found it the way this reads:
+ * a warning that stayed silent over a muted channel.
+ *
+ * **A channel that does not exist yet reads as `true`, and that is right rather than a gap**: nothing
+ * can have been muted before it was created, and [ensureReminderChannels] creates it at
+ * [ReminderChannel.importance] on the next launch.
+ *
+ * Read live, never cached — the fix is a settings screen this app hands the user off to, so the
+ * answer changes while the app is in the background.
+ */
+fun Context.channelCanAppear(channel: ReminderChannel): Boolean {
+    val manager = getSystemService(NotificationManager::class.java) ?: return true
+    val importance = manager.getNotificationChannel(channel.id)?.importance ?: return true
+    return importance != NotificationManager.IMPORTANCE_NONE
+}

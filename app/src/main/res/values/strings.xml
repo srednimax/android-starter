@@ -61,7 +61,7 @@
     <!-- The banner, not the switch: said as what is lost, because a user who has just refused a
          permission can already see that it is off. PLAN.md rule 4's third clause. -->
     <string name="settings_reminders_blocked_title">Reminders will not arrive</string>
-    <string name="settings_reminders_blocked_body">Notifications are switched off for this app, so nothing will be posted when something is due.</string>
+    <string name="settings_reminders_blocked_body">Android is set to hide reminders from this app, so nothing will be shown when something is due.</string>
     <string name="settings_reminders_blocked_action">Open notification settings</string>
     <string name="settings_data">Data</string>
     <string name="settings_backup">Backup and restore</string>
