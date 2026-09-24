@@ -178,7 +178,9 @@ class TranslationTest {
         // Note what this cannot see: an argument that is *kept* and given a different job. Polish
         // `photo_gallery_empty_help` carried its %1$s faithfully and moved it from the thing the
         // photos are of to the gallery they land in, describing a folder that does not exist. Every
-        // assertion here passed. That half is the native read-through's, and always will be.
+        // assertion here passed. Argument *roles* are unchecked by any build in this repo; the
+        // audit in `docs/translator-brief.md` §8 is what reads for them, and the report row under
+        // the language picker is what catches the ones it misses.
         translations.forEach { (_, label, translated) ->
             base.strings.forEach { (name, element) ->
                 val counterpart = translated.strings[name] ?: return@forEach
@@ -205,6 +207,45 @@ class TranslationTest {
                         item.formatArguments(),
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * Pairs where one string **quotes another by name**, and the quote is load-bearing.
+     *
+     * Each entry is (the string being quoted, the string that quotes it) — copy such as *"Tap Stop
+     * in the notification"* naming a notification action, or *"see After a restart below"* naming a
+     * section header. A translator working string by string has no way to see the pairing, so both
+     * halves come out fluent and name two different things, and the user is pointed at a button that
+     * does not exist under that word. The first app built from this template found two of these in
+     * its audit (`docs/translator-brief.md` §8) and turned them into this table.
+     *
+     * The alternative is `getString(R.string.other)` interpolation, which cannot drift and needs no
+     * entry here. It is not free: it forces the quoted string into whatever case and grammar the host
+     * sentence needs, which is wrong in most inflecting languages for a heading being cited. So a
+     * composed sentence is allowed, and **an entry here is what it costs**. Empty until the first one.
+     */
+    private val quotedPairs: List<Pair<String, String>> = emptyList()
+
+    @Test
+    fun `a string that quotes another by name still contains it in every locale`() {
+        // Both names must exist in the base, or a rename turns this into a test that skips its
+        // own subject — green, and checking nothing.
+        quotedPairs.flatMap { it.toList() }.forEach {
+            assertTrue("quotedPairs names '$it', which is not a string in the base language", it in base.strings)
+        }
+        (listOf(Translation(BASE_LOCALE, "values/strings.xml", base)) + translations).forEach { (_, label, resources) ->
+            quotedPairs.forEach { (quoted, host) ->
+                val quotedText = resources.strings[quoted]?.textContent ?: return@forEach
+                val hostText = resources.strings[host]?.textContent ?: return@forEach
+                assertTrue(
+                    "in $label, '$host' is supposed to quote '$quoted' by name, but does not " +
+                        "contain it: '$quoted' is \"$quotedText\" and '$host' reads \"$hostText\" — " +
+                        "the two have to use the same word, because the user is being pointed at " +
+                        "a button or a section they then have to recognise",
+                    quotedText in hostText,
+                )
             }
         }
     }
@@ -308,7 +349,7 @@ class TranslationTest {
         const val LOCALES_CONFIG = "src/main/res/xml/locales_config.xml"
 
         /**
-         * Where a language waits for its native read-through. One directory up, because it is a
+         * Where a language waits for its audit (`docs/translator-brief.md` §8). One directory up, because it is a
          * repository-level staging area rather than an Android source set — and outside `res/`
          * precisely so that a draft cannot be shipped by existing.
          */

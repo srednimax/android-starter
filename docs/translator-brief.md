@@ -157,6 +157,9 @@ Before a language goes into `locales_config.xml`:
   or promised beyond what the app can know.
 - **The §5 table is checked for consistency**, because a term translated two ways is the failure that
   makes an app look sloppy in a way no test catches.
+- **Every string that names another — a button, a section header — uses that string's exact word.**
+  Both halves read fluently on their own, so only the pairing is wrong. Once a pairing is found, add it
+  to `quotedPairs` in `TranslationTest`, which holds it in every locale from then on.
 - **It is compiled, installed and looked at.** A staged draft has never met `aapt2`: clipped labels and
   lint's plural warnings are invisible until it does, and neither needs a native speaker to see.
 
