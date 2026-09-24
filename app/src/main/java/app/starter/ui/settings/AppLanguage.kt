@@ -43,9 +43,19 @@ enum class AppLanguage(
 fun currentAppLanguage(): AppLanguage? {
     val locales = AppCompatDelegate.getApplicationLocales()
     val language = locales[0]?.language ?: return null
-    // Matched on the language subtag alone: the platform may hand back a region-qualified locale
-    // ("en-GB") for a list that only ever names a language ("en").
-    return AppLanguage.entries.firstOrNull { it.tag.equals(language, ignoreCase = true) }
+    // Matched on the **language subtag of both sides**, and two different things push that way. The
+    // platform may hand back a region-qualified locale ("en-GB") for an entry that names only a
+    // language ("en") — and an entry such as `pt-BR` is the opposite case, a region-qualified tag for
+    // a locale `Locale.getLanguage()` reports as plain "pt". Comparing whole tags misses both, and the
+    // symptom is identical either way: a chip the user just tapped that never looks selected. The
+    // first app built from this template shipped the one-sided match and found it with `pt-BR`.
+    //
+    // Sound only because no two entries share a language subtag, which `AppLanguageTest` asserts
+    // rather than trusts — the day a second Portuguese or a second Spanish is offered, this match
+    // becomes ambiguous instead of merely wrong, and a failing test is how that gets noticed.
+    return AppLanguage.entries.firstOrNull {
+        it.tag.substringBefore('-').equals(language, ignoreCase = true)
+    }
 }
 
 /**
