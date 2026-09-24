@@ -83,6 +83,19 @@ close. Whenever `APP_SCHEMA_VERSION` changes, all five hold before the release g
 - [ ] **Decide the `applicationId` deliberately.** It is fixed the moment the Play entry is created —
       not renameable, not transferable without losing every install and review.
 
+## After the closed test
+
+- [ ] **The production-access application is in, with its answers recorded verbatim** in
+      [`play-app-content.md`](play-app-content.md). Until it is granted the production track does not
+      exist. The app this template was extracted from waited one day; that is one datapoint, not a
+      promise. **If it comes back rejected, read the reason before changing any artifact.** Changing
+      the build first leaves you arguing the reason against a different build.
+- [ ] **Decide the first production number.** release-please never jumps to `1.0.0` by itself (with
+      the major at 0 even `feat!:` bumps the minor), so it takes a `Release-As: 1.0.0` footer
+      ([`RELEASING.md`](RELEASING.md)), or a deliberate decision to stay on 0.x. In order: production
+      access granted, *then* that version's release notes in every locale on an ordinary branch (never
+      on release-please's own, which it force-pushes), *then* the AAB and the listing go up together.
+
 ## Standing checks that never close
 
 - [ ] **Every release: run the artifact checks on the built AAB**, not on the source.
