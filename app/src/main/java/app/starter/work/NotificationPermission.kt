@@ -98,9 +98,9 @@ fun rememberNotificationPermissionAsk(onOutcome: (NotificationPermissionOutcome)
  * wrong exactly when it decides whether to tell the user their reminders are going nowhere. Read it
  * again on every resume — `ui/settings/SettingsScreen.kt` is the worked example.
  *
- * It is only half the question when the app has more than one channel: a channel muted on its own
- * hides its notifications while this still answers true. [openChannelNotificationSettings] is the
- * other half's way back.
+ * It is only half the question: a channel muted on its own hides its notifications while this still
+ * answers true. [channelCanAppear] reads the other half, and [openChannelNotificationSettings] is its
+ * way back.
  */
 fun Context.notificationsAllowed(): Boolean = NotificationManagerCompat.from(this).areNotificationsEnabled()
 

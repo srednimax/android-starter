@@ -43,7 +43,7 @@
     <string name="settings_reminders_enabled">Przypominaj mi</string>
     <string name="settings_reminders_hint">Jedno sprawdzenie dziennie. Nic nie jest nigdzie wysyłane.</string>
     <string name="settings_reminders_blocked_title">Przypomnienia nie dotrą</string>
-    <string name="settings_reminders_blocked_body">Powiadomienia tej aplikacji są wyłączone, więc nic nie zostanie wyświetlone, gdy nadejdzie termin.</string>
+    <string name="settings_reminders_blocked_body">Android ukrywa przypomnienia tej aplikacji, więc nic nie zostanie wyświetlone, gdy nadejdzie termin.</string>
     <string name="settings_reminders_blocked_action">Otwórz ustawienia powiadomień</string>
     <string name="settings_data">Dane</string>
     <string name="settings_backup">Kopia zapasowa i przywracanie</string>
