@@ -80,8 +80,11 @@ scripts in the last column — they are what tells you the strip is finished rat
   `ACCESS_NETWORK_STATE`, `FOREGROUND_SERVICE` — and `RECEIVE_BOOT_COMPLETED` for good measure. If you
   keep a boot receiver but drop WorkManager, **declare `RECEIVE_BOOT_COMPLETED` yourself first**, or the
   receiver stops being called with nothing to say so. `ACCESS_NETWORK_STATE` on an app with no
-  `INTERNET` is a line a Play reviewer can ask about; removing WorkManager removes the question.
-- `scripts/aab-permissions.py`'s EXPECTED rows for all of the above, in the same commit.
+  `INTERNET` is a line a Play reviewer can ask about, and **the tip merges it too**: removing
+  WorkManager removes the question only if the tip goes as well.
+- `scripts/aab-permissions.py`'s EXPECTED rows for all of the above, in the same commit — except
+  `ACCESS_NETWORK_STATE` while the tip stays, which then belongs to billing alone: keep the row, and
+  its line in `play-app-content.md`, and name billing as the only owner.
 - `scripts/device-gate.py`'s `ALARM_TAG` and the exact-alarm line, if nothing schedules.
 - **Settings' *Reminders* section, and the ask and banner behind it** — the `SwitchRow`, the
   `rememberNotificationPermissionAsk` call, the resumed re-read of `notificationsAllowed`, the
@@ -90,9 +93,33 @@ scripts in the last column — they are what tells you the strip is finished rat
   ask; it is the shape to copy for *your* first ask, so read it before deleting it.
 - ADR-0003 gets its amendment.
 
+### The tip (Play Billing)
+
+- `tip/`, `test/…/tip/`, `ui/support/SupportViewModel.kt` and the tip section in `SupportScreen.kt`
+- The one-time ask: `TipAskCard` and `ItemsScreen`'s `onOpenSupport` parameter in `ui/items/`, the
+  `onOpenSupport` the `Items` entry passes in `Navigation.kt`, `showTipAsk` and `answerTipAsk` in
+  `ItemsViewModel`, and `AppPreferences.tipAsked` / `markTipAsked`
+- `AppContainer.tipJar` and `installedAt`; `settleTipsOnEveryForeground` in `MainApplication`
+- The `items_tip_ask_*` and `support_tip*` strings, in every language
+- Gradle: `billing.ktx`, `androidx.lifecycle.process`, and licensee's `allowUrl` for Google's terms
+- Manifest: the `INTERNET` `tools:node="remove"` — harmless once billing is gone, but it then
+  removes nothing and reads as a reason that no longer exists
+- `scripts/aab-permissions.py`: the `BILLING` row in EXPECTED, and billing's name in the
+  `ACCESS_NETWORK_STATE` row — the whole row if WorkManager has already gone
+- `play-app-content.md`: the `BILLING` row and the `datatransport` paragraph under *What the
+  artifact carries* (and billing's name in the `ACCESS_NETWORK_STATE` row), *Content rating* back to
+  all No, Data safety point 5 and *The tip*
+- The privacy policy's billing-library sentence under *The app collects nothing*, its billing bullet
+  and its tip paragraph
+- `CLAUDE.md`'s Play Billing row in Stack and `tip/` line in Layout; `CONTEXT.md`'s **Tip** row
+- `RELEASING.md`'s *Selling the tip*; the tip section of `DOD.md`
+- ADR-0007 gets its amendment.
+
 ### The placeholder domain
 
 - `ui/items/`, the items routes in `Navigation.kt` / `NavigationKeys.kt`, the `tab_items` strings
+- ⚠ **The tip's one ask lives on the items screen** and counts items as its measure of use. Move
+  `TipAskCard` to your home screen and give `tipAskDue` your own measure, or the ask goes with it
 - `debug/…/data/SampleData.kt`, `debug/…/debug/SeedReceiver.kt`, the debug manifest's receiver, and
   the seed rows in `DebugSettings.kt` — or keep the seeding seam and point it at your own data
 - **`scripts/edge-to-edge.py`'s SCENES**, `TAB_BAR`, `HOME_TAB` and `SEED_WALK`: they walk the

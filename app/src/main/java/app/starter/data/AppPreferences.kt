@@ -44,6 +44,7 @@ class AppPreferences(
         val REMINDERS_ENABLED = booleanPreferencesKey("reminders_enabled")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val BACKUP_FOLDER_URI = stringPreferencesKey("backup_folder_uri")
+        val TIP_ASKED = booleanPreferencesKey("tip_asked")
     }
 
     /**
@@ -92,6 +93,13 @@ class AppPreferences(
     val backupFolderUri: Flow<String?> = store.data.map { it[Keys.BACKUP_FOLDER_URI] }
 
     /**
+     * Whether the home screen's one tip ask has been answered, either way (ADR-0007). It does not reach
+     * the next phone: `AppBackupAgent` backs up only the database and the thumbnails (ADR-0005), so
+     * after a move the user is asked once more, a month after the new install.
+     */
+    val tipAsked: Flow<Boolean> = store.data.map { it[Keys.TIP_ASKED] ?: false }
+
+    /**
      * The theme mode, read once, before any Activity exists.
      *
      * The one place a `suspend` read is worth its cost: `MainApplication.onCreate` needs the answer
@@ -115,6 +123,10 @@ class AppPreferences(
 
     suspend fun setOnboardingDone(done: Boolean) {
         store.edit { it[Keys.ONBOARDING_DONE] = done }
+    }
+
+    suspend fun markTipAsked() {
+        store.edit { it[Keys.TIP_ASKED] = true }
     }
 
     suspend fun setBackupFolderUri(uri: String?) {
